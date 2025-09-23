@@ -1,0 +1,7 @@
+.program optics_gpio_read
+.wrap_target
+    in pins, 1            ; pin okuma modu (1 bit)
+    wait 0 pin, 1         ; pin high olana kadar bekle
+    push                  ; FIFO ya gonder
+    jmp optics_gpio_read  ; tekrar basla
+.wrap
