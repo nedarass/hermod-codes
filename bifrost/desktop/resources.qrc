@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/hyperloop_icon.png</file>
+        <file>images/hyperloop_icon_inverted.png</file>
+        <file>images/logo_app.png</file>
+        <file>images/logo_app_inverted.png</file>
+        <file>images/logo_team_inverted.png</file>
+    </qresource>
+</RCC>
