@@ -1,0 +1,19 @@
+.program encoder_read
+; Pin A = in_base      (sm_config_set_in_pins(..., PIN_A))
+; Pin B = in_base + 1
+; RX FIFO:  0b000000ab  (en düşük 2 bit güncel AB)
+
+.wrap_target
+    in   pins, 2        ; ISR = AB_prev  (ilk okuma)
+    mov  osr, isr
+loop:
+    in   pins, 2        ; ISR = AB_now
+    mov  x, isr         ; X = AB_now
+    mov  y, osr         ; Y = AB_prev
+    jmp  x!=y changed   ; aynıysa tekrar oku
+    jmp  loop
+changed:
+    mov  osr, isr       ; save new as prev
+    push noblock        ; gönder (8 bit) → IRQ’de yön hesaplayın
+    jmp  loop
+.wrap
