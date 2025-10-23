@@ -13,6 +13,7 @@ typedef struct {
     int16_t accel_z;
 // ivme verileri
     int16_t temp;
+// termometreden veri okur
     int16_t gyro_x;
     int16_t gyro_y;
     int16_t gyro_z;
