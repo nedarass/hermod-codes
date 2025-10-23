@@ -6,9 +6,9 @@
 #include "mpu9250.h"
 #include "encoder_read.h"
 
-// Navigation state structure
+// Navigation state structure , güncel veriler 
 typedef struct {
-    uint32_t timestamp;           // Timestamp in microseconds
+    uint32_t timestamp;           // Timestamp in microseconds 
     
     // Position, velocity, acceleration in the trajectory direction
     float position;               // Position in meters
@@ -18,9 +18,9 @@ typedef struct {
     // Raw sensor values (for diagnostics)
     int32_t encoder_count;        // Raw encoder count
     float accel_raw;              // Raw acceleration along trajectory
-} navigation_state_t;
+} navigation_state_t; 
 
-// Kalman filter state
+// Kalman filter state , daha dogru bir hız ivme tahmini yapar 
 typedef struct {
     // State vector [position, velocity, acceleration]
     float x[3];
@@ -41,7 +41,7 @@ typedef struct {
     float encoder_pulses_per_meter;
 } kalman_filter_t;
 
-// Initialize the navigation system and Kalman filter
+// Initialize the navigation system and Kalman filter , yeni sensor verilerini calistirir
 void navigation_init(float encoder_pulses_per_meter, float process_noise, float encoder_noise, float accel_noise);
 
 // Update navigation state with new sensor readings
