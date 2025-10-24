@@ -1,18 +1,14 @@
-#ifndef HAL_UART_H
-#define HAL_UART_H
+#include "hal_uart.h"
 
-#include "stm32f4xx_hal.h"
+extern UART_HandleTypeDef huart2; // CubeMX’te UART2 konfigüre edildiğinde oluşur
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void hal_uart_send(uint8_t *data, uint16_t size);
-void hal_uart_receive(uint8_t *data, uint16_t size);
-
-#ifdef __cplusplus
+void hal_uart_send(uint8_t *data, uint16_t size)
+{
+    HAL_UART_Transmit(&huart2, data, size, HAL_MAX_DELAY);
 }
-#endif
 
-#endif // HAL_UART_H
+void hal_uart_receive(uint8_t *data, uint16_t size)
+{
+    HAL_UART_Receive(&huart2, data, size, HAL_MAX_DELAY);
+}
 
