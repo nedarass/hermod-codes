@@ -78,3 +78,21 @@ void buffer_safe_get_latest(mutex_t *mutex, const volatile void *array, void *de
 
     mutex_exit(mutex);
 }
+
+
+
+
+/* // Core/Src/shared_data.c bu ne ya ?
+
+#include "shared_data.h"
+#include <string.h>
+
+// Global Sistem Durumu yapısı (Yalnızca burada TANIMLANIR)
+System_State_t g_system_state = {0};
+
+void __attribute__((constructor)) init_system_state(void) {
+    // Statik başlatma: C++ constructor'larındaki gibi çalışır
+    // g_system_state'i tümüyle 0'a veya varsayılan değerlere ayarlar
+    // Bu, CONTROL_Init'ten önce çağrılır.
+    memset(&g_system_state, 0, sizeof(System_State_t));
+}*/
