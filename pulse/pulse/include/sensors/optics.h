@@ -16,3 +16,6 @@ void pio_interrupt_handler();
 
 
 #endif
+/*HAL GPIO EXTI: Omron veya Optik sensörler için STM32 Harici Kesme (EXTI)
+kullanılmalıdır. Bu, Omron algılandığında anında tepki vermenin doğru yoludur.*/
+
