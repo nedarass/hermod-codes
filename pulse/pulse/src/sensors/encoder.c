@@ -78,3 +78,47 @@ int encoder_setup(void)
 
     return 0;
 }
+/*// Core/Src/encoder_driver.c
+
+#include "encoder_driver.h"
+#include "shared_data.h"
+
+// Global sistem durum yapısı
+extern System_State_t g_system_state;
+
+// Sabitler
+#define PULSES_PER_REVOLUTION 4096.0f // Encoder tur başına darbe sayısı (Kullanılan donanıma göre değiştirilmeli)
+#define WHEEL_CIRCUMFERENCE 0.5f      // Tekerlek çevresi (metre)
+
+// Enkoderden metre/saniye hesaplama için gerekli (Genellikle 10ms'de bir ölçülür)
+#define UPDATE_PERIOD_SEC 0.01f
+
+static int32_t last_count = 0; // Son pozisyon sayacı değeri
+
+void ENCODER_Init(TIM_HandleTypeDef *htim)
+{
+    // STM32CubeMX'te TIM'in Encoder Modunda başlatılmış olması gerekir.
+    HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
+    last_count = __HAL_TIM_GET_COUNTER(htim);
+    printf("Encoder Baslatildi.\r\n");
+}
+
+void ENCODER_Update(TIM_HandleTypeDef *htim)
+{
+    int32_t current_count = __HAL_TIM_GET_COUNTER(htim);
+
+    // Counter resetlenmiş olabilir (Örn: 16-bit Timer taşması)
+    int32_t count_delta = current_count - last_count;
+
+    // Pozisyon ve Hız Hesaplama
+    float distance_delta_m = (float)count_delta / PULSES_PER_REVOLUTION * WHEEL_CIRCUMFERENCE;
+
+    // Hız: (Mesafe / Zaman)
+    float current_velocity_mps = distance_delta_m / UPDATE_PERIOD_SEC;
+
+    // Global Durumu Güncelle
+    g_system_state.velocity_mps = current_velocity_mps;
+    g_system_state.position_m += distance_delta_m;
+
+    last_count = current_count;
+}*/
