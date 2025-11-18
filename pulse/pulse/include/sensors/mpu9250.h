@@ -11,19 +11,16 @@ typedef struct {
     int16_t accel_x;
     int16_t accel_y;
     int16_t accel_z;
-// ivme verileri
     int16_t temp;
-// termometreden veri okur
     int16_t gyro_x;
     int16_t gyro_y;
     int16_t gyro_z;
-// acısal hiz verileri
 } mpu9250_sensor_data_t;
 
 //mpu verisini okur ve sensor data structina yazar.
 bool read_mpu9250(mpu9250_sensor_data_t* sensor_data);
 
-//mpu okumasi icin donanimsal zamanlayici callback düzenli aralıklarla tetikler 
+//mpu okumasi icin donanimsal zamanlayici callback
 bool mpu9250_htimer_callback(struct repeating_timer *t);
 
 
