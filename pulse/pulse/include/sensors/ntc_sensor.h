@@ -9,9 +9,12 @@ extern "C" {
 
 #include "main.h" // HAL tipleri için (ADC_HandleTypeDef)
 
-// NTC Sensor Fonksiyonları (C++'da tanımlanacak)
+// NTC Sensor Fonksiyonları 
+// Başlatma fonksiyonu (şu an boş ama gelecekte kalibrasyon için gerekebilir)
 void NTC_Init(void);
-void NTC_Update(ADC_HandleTypeDef *hadc); // ADC Handle'ı argüman olarak alır
+// Güncelleme fonksiyonu: Ana kontrol döngüsünden çağrılır.
+// Parametre olarak ADC biriminin adresini (Handle) alır.
+void NTC_Update(ADC_HandleTypeDef *hadc); 
 
 #ifdef __cplusplus
 }
