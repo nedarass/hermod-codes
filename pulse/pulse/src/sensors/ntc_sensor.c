@@ -64,7 +64,7 @@ void NTC_Update(ADC_HandleTypeDef *hadc)
     if (hadc == NULL) return;
 
     // 1. Kanalı Seç (Çoklu kanal kullanılıyorsa bu gereklidir)
-    sConfig.Channel = NTC_ADC_CHANNEL;
+    sConfig.Channel = NTC_ADC_CHANNEL_1;
     sConfig.Rank = ADC_REGULAR_RANK_1;
     sConfig.SamplingTime = ADC_SAMPLETIME_28CYCLES_5; // Orta hızda örnekleme
     
