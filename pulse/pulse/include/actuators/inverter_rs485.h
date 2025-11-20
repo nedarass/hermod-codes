@@ -10,10 +10,6 @@ extern "C" {
 #include "main.h"
 #include "shared_data.h"
 
-// RS485 DE (Driver Enable) Pin - Transmit sırasında HIGH
-#define RS485_DE_GPIO_PORT  GPIOB
-#define RS485_DE_PIN        GPIO_PIN_1
-
 // Modbus Timeout
 #define MODBUS_TIMEOUT_MS   100
 
@@ -25,20 +21,14 @@ typedef enum {
 } InverterState_t;
 
 void INVERTER_Init(UART_HandleTypeDef *huart);
-/* Inverter iletişimini başlatır.
-  huart: Kullanılacak UART birimi (örn: &huart2)
- */
+// Inverter iletişimini başlatır. huart: Kullanılacak UART birimi (örn: &huart2) 
 bool INVERTER_Write(uint8_t *data, uint16_t len);
 /* Modbus/RS485 üzerinden ham veri paketi gönderir.
  Bu fonksiyon arka planda DE (Driver Enable) pinini yönetmelidir.
- data: Gönderilecek veri dizisi pointer'ı
- len: Veri uzunluğu
- */
+ data: Gönderilecek veri dizisi pointer'ı , len: Veri uzunluğu */
 bool INVERTER_SetRPM(int16_t rpm);
 /* Motor hızını ayarlar (Yardımcı fonksiyon).
-  Arka planda doğru Modbus paketini hazırlar ve INVERTER_Write'ı çağırır.
-  rpm: Hedef RPM
- */
+  Arka planda doğru Modbus paketini hazırlar ve INVERTER_Write'ı çağırır. rpm: Hedef RPM */
 bool INVERTER_ReadStatus(void);
 InverterState_t INVERTER_GetState(void);
 
