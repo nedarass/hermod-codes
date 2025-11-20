@@ -1,4 +1,5 @@
-// Eğer motorlar VESC (Vedder Electronic Speed Controller) tarafından sürülüyorsa, bu dosya VESC ile iletişim kurmak için özel protokolü (genellikle UART veya CAN) içerir
+// Eğer motorlar VESC (Vedder Electronic Speed Controller) tarafından sürülüyorsa,
+// bu dosya VESC ile iletişim kurmak için özel protokolü (genellikle UART veya CAN) içerir
 #ifndef VESC6_H
 #define VESC6_H
 #include "pico/stdlib.h"
