@@ -16,9 +16,6 @@ extern "C" {
  status: true (LED AÇIK), false (LED KAPALI)
  */
 // GPIO Tanımları - CubeMX'te yapılandırılacak
-#define BLINKER_GPIO_PORT GPIOA
-#define BLINKER_PIN       GPIO_PIN_5
-
 typedef enum {
     BLINKER_STATE_OFF = 0,
     BLINKER_STATE_ON = 1,
@@ -27,11 +24,9 @@ typedef enum {
 
 void BLINKER_Init(void);
 void BLINKER_Set(bool status); 
-/* Belirli bir süre boyunca LED'i yakıp söndürür (Non-blocking olması tercih edilir).
- Control döngüsü içinde sayaç ile yönetilmesi daha uygundur.
- */
+// Belirli bir süre boyunca LED'i yakıp söndürür (Non-blocking olması tercih edilir). Control döngüsü içinde sayaç ile yönetilmesi daha uygundur.
 void BLINKER_Toggle(void);
-void BLINKER_UpdateNonBlocking(void); // 100ms timer interrupt'ta çağrılacak
+void BLINKER_UpdateNonBlocking(void); // 100ms timer interrupt'ta çağrılacak // Non-blocking yanıp sönme için (Timer interrupt veya loop içinde çağrılır)
 
 #ifdef __cplusplus
 }
