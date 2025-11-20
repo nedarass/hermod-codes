@@ -22,16 +22,14 @@ typedef enum {
 
 void POWERCUT_Init(void);
 bool POWERCUT_SetState(bool enable_power);
-/**
- * @brief Ana güç rölesini kontrol eder.
- * @param enable_power:
- * true  -> Güç ver (Röle Çekili / İletimde)
- * false -> GÜCÜ KES (Röle Bırakılı / Kesik)
+/* Ana güç rölesini kontrol eder.
+  enable_power:
+  true  -> Güç ver (Röle Çekili / İletimde)
+  false -> GÜCÜ KES (Röle Bırakılı / Kesik)
  */
 void POWERCUT_TriggerEmergency(void);
-/**
- * @brief Yazılımsal olarak gücü anında keser.
- * Genellikle hata durumlarında (Watchdog vb.) çağrılır.
+/* Yazılımsal olarak gücü anında keser.
+ Genellikle hata durumlarında (Watchdog vb.) çağrılır.
  */
 PowerState_t POWERCUT_GetState(void);
 
