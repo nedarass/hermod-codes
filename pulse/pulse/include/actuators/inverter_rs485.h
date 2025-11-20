@@ -25,23 +25,19 @@ typedef enum {
 } InverterState_t;
 
 void INVERTER_Init(UART_HandleTypeDef *huart);
-/**
- * @brief Inverter iletişimini başlatır.
- * @param huart: Kullanılacak UART birimi (örn: &huart2)
+/* Inverter iletişimini başlatır.
+  huart: Kullanılacak UART birimi (örn: &huart2)
  */
 bool INVERTER_Write(uint8_t *data, uint16_t len);
-/**
- * @brief Modbus/RS485 üzerinden ham veri paketi gönderir.
- * Bu fonksiyon arka planda DE (Driver Enable) pinini yönetmelidir.
- *
- * @param data: Gönderilecek veri dizisi pointer'ı
- * @param len: Veri uzunluğu
+/* Modbus/RS485 üzerinden ham veri paketi gönderir.
+ Bu fonksiyon arka planda DE (Driver Enable) pinini yönetmelidir.
+ data: Gönderilecek veri dizisi pointer'ı
+ len: Veri uzunluğu
  */
 bool INVERTER_SetRPM(int16_t rpm);
-/**
- * @brief Motor hızını ayarlar (Yardımcı fonksiyon).
- * Arka planda doğru Modbus paketini hazırlar ve INVERTER_Write'ı çağırır.
- * @param rpm: Hedef RPM
+/* Motor hızını ayarlar (Yardımcı fonksiyon).
+  Arka planda doğru Modbus paketini hazırlar ve INVERTER_Write'ı çağırır.
+  rpm: Hedef RPM
  */
 bool INVERTER_ReadStatus(void);
 InverterState_t INVERTER_GetState(void);
