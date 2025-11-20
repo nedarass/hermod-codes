@@ -11,11 +11,9 @@ extern "C" {
 #include "main.h"
 #include <stdbool.h>
 #include "shared_data.h"
-/**
- * @brief Durum LED'ini yakar veya söndürür.
- * Not: Pin konfigürasyonu CubeMX (main.c) tarafından yapılmıştır.
- *
- * @param status: true (LED AÇIK), false (LED KAPALI)
+/*Durum LED'ini yakar veya söndürür.
+ Not: Pin konfigürasyonu CubeMX (main.c) tarafından yapılmıştır.
+ status: true (LED AÇIK), false (LED KAPALI)
  */
 // GPIO Tanımları - CubeMX'te yapılandırılacak
 #define BLINKER_GPIO_PORT GPIOA
@@ -29,9 +27,8 @@ typedef enum {
 
 void BLINKER_Init(void);
 void BLINKER_Set(bool status); 
-/**
- * @brief Belirli bir süre boyunca LED'i yakıp söndürür (Non-blocking olması tercih edilir).
- * Control döngüsü içinde sayaç ile yönetilmesi daha uygundur.
+/* Belirli bir süre boyunca LED'i yakıp söndürür (Non-blocking olması tercih edilir).
+ Control döngüsü içinde sayaç ile yönetilmesi daha uygundur.
  */
 void BLINKER_Toggle(void);
 void BLINKER_UpdateNonBlocking(void); // 100ms timer interrupt'ta çağrılacak
