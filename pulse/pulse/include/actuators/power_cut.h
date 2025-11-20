@@ -1,3 +1,4 @@
+// Kritik bir durumda veya komutla ana gücü kesmek için kullanılan donanım rölelerini kontrol eder
 #ifndef POWER_CUT_H
 #define POWER_CUT_H
 
