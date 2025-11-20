@@ -1,3 +1,5 @@
+
+//Podun dışarıya (veya içerideki ekiplere) durum bilgisi vermek için kullanılan ışıkların kontrolü
 #ifndef BLINKER_H
 #define BLINKER_H
 
