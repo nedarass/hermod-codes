@@ -32,8 +32,7 @@ typedef enum {
 BrakeError_t BRAKES_GetLastError(void);
 void BRAKES_SetState(BrakeState_t state);
 /* Fren sistemini istenen duruma getirir.
- state: BRAKE_RELEASED veya BRAKE_ENGAGED
- */
+ state: BRAKE_RELEASED veya BRAKE_ENGAGED */
 void BRAKES_EmergencyEngage(void);
 // Acil durum frenlemesi. Tüm frenleri maksimum güçte kilitler.
  
