@@ -1,3 +1,4 @@
+// Podun ana motor sürücüsü (inverter) ile RS485 protokolü üzerinden iletişim kurarak motorun hızını veya torkunu kontrol eder
 #ifndef INVERTER_RS485_H
 #define INVERTER_RS485_H
 
