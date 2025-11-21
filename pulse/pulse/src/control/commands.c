@@ -53,6 +53,7 @@ void execute_close_led(void) {
 #include "actuators/brakes.h"
 #include "actuators/vesc6.h"
 #include "actuators/inverter_rs485.h"
+#include "actuators/power_cut.h"
 #include "shared_data.h"
 #include <string.h>
 #include <stdio.h>
@@ -104,10 +105,18 @@ void MOTOR_SetTargetSpeed(float speed_mps)
 
 void SYSTEM_EmergencyPowerCut(void)
 {
-    // Gerçekte: Power Cut rölesi/anahtarı tetiklenir
-    printf("KRITIK KOMUT: ACIL GUC KESME! Sistemi kapatiliyor...\r\n");
+     printf("🚨 KRITIK KOMUT: ACIL GUC KESME! Sistemi kapatiliyor...\r\n");
+    
+    // 1. GERÇEK GÜÇ KESME - power_cut.h'daki fonksiyonu çağır
+    POWERCUT_TriggerEmergency();
+    
+    // 2. FRENLERİ KİLİTLE (Güvenlik)
+    BRAKES_EmergencyEngage();
+    
+    // 3. DURUMU KAYDET
     g_system_state.error_flags |= ERR_FLAG_POWER_TRIP;
     g_system_state.power_line_status = 0;
+    g_system_state.brake_status = 1; // Frenler kilitli
 }
 
 // -------------------------------------------------------------------
