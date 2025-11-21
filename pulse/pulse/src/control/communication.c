@@ -44,6 +44,9 @@ void write_protocol_data(uint8_t* data, int size)
 #include <string.h>
 #include <stdio.h>
 
+// timeout için 
+static uint32_t last_rx_time = 0;
+#define COMM_TIMEOUT_MS 1000
 // Harici değişkenler (main.c'de tanimlanan)
 extern UART_HandleTypeDef huart1;
 extern uint8_t rx_data;
@@ -92,12 +95,31 @@ static void on_packet_received(uint8_t id, uint8_t type, uint8_t *payload, uint1
     }
 }
 
+// ÇÖZÜM: CRC checksum ekle
+static uint16_t COMM_CalculateCRC(const uint8_t *data, uint16_t len)
+{
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x8000) 
+                crc = (crc << 1) ^ 0x1021;
+            else 
+                crc <<= 1;
+        }
+    }
+    return crc;
+}
 
+
+// Paket formatını güncelle: [START][ID][TYPE][LEN_L][LEN_H][PAYLOAD][CRC_L][CRC_H][END]
 /**
  * @brief UART'tan gelen her bir baytı işleyen durum makinesi.
  */
 void COMM_ProcessByte(uint8_t ch)
 {
+    // timeoout için 
+     last_rx_time = HAL_GetTick();
     switch (rx_state)
     {
         case RX_STATE_WAIT_START:
@@ -136,7 +158,16 @@ void COMM_ProcessByte(uint8_t ch)
     }
 }
 
-
+// timeout için
+// Control loop'ta timeout kontrolü
+void COMM_CheckTimeout(void)
+{
+    if (rx_state != RX_STATE_WAIT_START && 
+        (HAL_GetTick() - last_rx_time) > COMM_TIMEOUT_MS) {
+        printf("UYARI: Haberlesme timeout, state machine resetlendi\r\n");
+        rx_state = RX_STATE_WAIT_START;
+    }
+}
 /**
  * @brief UART Alım kesmesini başlatır. main.c'den çağrılır.
  */
