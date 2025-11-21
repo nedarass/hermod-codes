@@ -63,6 +63,30 @@ void CONTROL_Init(void)
     printf("CONTROL: Sistem baslatildi. Dongu basliyor.\r\n");
 }
 
+// ÇÖZÜM: Error handling ve recovery ekle
+void CONTROL_HandleErrors(void)
+{
+    // MPU hatası
+    if (g_system_state.error_flags & ERR_FLAG_MPU_FAIL) {
+        static uint32_t mpu_retry_time = 0;
+        if (HAL_GetTick() - mpu_retry_time > 5000) { // 5 saniyede bir retry
+            if (MPU9250_Init(&hi2c1) == HAL_OK) {
+                g_system_state.error_flags &= ~ERR_FLAG_MPU_FAIL;
+                printf("MPU9250 recovery successful\r\n");
+            }
+            mpu_retry_time = HAL_GetTick();
+        }
+    }
+    
+    // Communication hatası
+    if (g_system_state.error_flags & ERR_FLAG_COMM_TIMEOUT) {
+        // Yeniden başlatmayı dene
+        COMM_Init();
+    }
+}
+
+
+
 // -------------------------------------------------------------------
 // --- ANA KONTROL DÖNGÜSÜ ---
 // -------------------------------------------------------------------
@@ -75,6 +99,8 @@ void CONTROL_Loop(void)
     // ============================================================
     if (current_tick - last_sensor_update >= 10)
     {
+       // sonradan eklendi 
+        CONTROL_HandleErrors();
         // --- A. Sensör Güncellemeleri ---
         
         // NTC (Sıcaklık) Okuması:
