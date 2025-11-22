@@ -46,6 +46,9 @@ int main()
     int loopCounter = 0;
     
     while (server.isConnected()) {
+         if (server.shouldSendPing()) {
+            server.sendPing();
+        }
         loopCounter++;
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastPingTime).count();
