@@ -5,38 +5,34 @@
 #include <string>
 #include <cstring>
 #include <unistd.h>
-#include <queue>
 #include <arpa/inet.h>
+#include <chrono>
 
 class TCPServer {
 public:
     TCPServer(int port);
-    
     ~TCPServer();
     
     bool start();
-    
     bool acceptClient();
-    
     std::string receiveData();
-    
     void sendData(const std::string& data);
-    
     void closeServer();
     
-    void pingPongLoop();
-
-    void enqueueMessage(const std::string& message);
-
+    // ✅ PING-PONG TCP SERVER'IN GÖREVİ
+    void sendPing();
+    bool shouldSendPing();  // Zaman kontrolü
+    void updateLastPingTime(); // Zamanı güncelle
+    
     bool isConnected() const { return client_fd != -1; }
 
 private:
     int port;
     int server_fd, client_fd;
-
-    int pingPongWaitMS = 100; //ping pong sinyal bekleme süresi.
-
-    std::queue<std::string> messageQueue;
+    
+    // ✅ Ping-pong state'i TCP Server'da
+    std::chrono::steady_clock::time_point lastPingTime;
+    const int PING_INTERVAL_MS = 5000; // 5 saniye
 };
 
 #endif
