@@ -51,6 +51,8 @@ bool TCPServer::acceptClient() {
         return false;
     }
     std::cout << "Client baglandi" << std::endl;
+     // Bağlantı kurulunca ilk ping zamanını sıfırla
+    lastPingTime = std::chrono::steady_clock::now();
 
     return true;
 }
@@ -81,6 +83,29 @@ void TCPServer::sendData(const std::string& data) {
     const char* c_data = data.c_str();
     
     send(client_fd, c_data, strlen(c_data), 0);
+}
+
+// ✅ PING-PONG FONKSİYONLARI
+void TCPServer::sendPing() {
+    if (!isConnected()) return;
+    
+    sendData("PING");
+    updateLastPingTime(); // Gönderince zamanı güncelle
+    std::cout << "PING -> Pulse" << std::endl;
+}
+
+bool TCPServer::shouldSendPing() {
+    if (!isConnected()) return false;
+    
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - lastPingTime).count();
+    
+    return elapsed >= PING_INTERVAL_MS;
+}
+
+void TCPServer::updateLastPingTime() {
+    lastPingTime = std::chrono::steady_clock::now();
 }
 
 void TCPServer::closeServer() {
