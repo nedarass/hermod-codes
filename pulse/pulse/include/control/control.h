@@ -30,7 +30,7 @@ extern "C" {
 
 void CONTROL_Init(void);
 void CONTROL_Loop(void);
-void CONTROL_HandleErrors(void);        // ✅ EKLENDİ
+void CONTROL_HandleErrors(void);        
 void CONTROL_AutonomousDecisions(void); 
 
 #ifdef __cplusplus
