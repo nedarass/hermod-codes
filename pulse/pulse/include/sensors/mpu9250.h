@@ -1,13 +1,118 @@
-#ifndef MPU9250_H
-#define MPU9250_H
+// Core/Inc/mpu9250.h
+#ifndef INC_MPU9250_H_
+#define INC_MPU9250_H_
 
-#include "pico/stdlib.h"
-#include "hardware/timer.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-//pointer depola ileride
-//mpu icin veri tutma structi
+#include "main.h"
+#include "shared_data.h"
+
+// MPU9250 I2C Adresi
+#define MPU9250_I2C_ADDR         (0x68 << 1)  // 0xD0 (8-bit format)
+
+// MPU9250 Register Adresleri
+#define MPU9250_SELF_TEST_X      0x0D
+#define MPU9250_SELF_TEST_Y      0x0E  
+#define MPU9250_SELF_TEST_Z      0x0F
+#define MPU9250_SELF_TEST_A      0x10
+#define MPU9250_SMPLRT_DIV       0x19
+#define MPU9250_CONFIG           0x1A
+#define MPU9250_GYRO_CONFIG      0x1B
+#define MPU9250_ACCEL_CONFIG     0x1C
+#define MPU9250_ACCEL_CONFIG2    0x1D
+#define MPU9250_LP_ACCEL_ODR     0x1E
+#define MPU9250_WOM_THR          0x1F
+#define MPU9250_FIFO_EN          0x23
+#define MPU9250_I2C_MST_CTRL     0x24
+#define MPU9250_I2C_SLV0_ADDR    0x25
+#define MPU9250_I2C_SLV0_REG     0x26
+#define MPU9250_I2C_SLV0_CTRL    0x27
+#define MPU9250_I2C_SLV1_ADDR    0x28
+#define MPU9250_I2C_SLV1_REG     0x29
+#define MPU9250_I2C_SLV1_CTRL    0x2A
+#define MPU9250_I2C_SLV2_ADDR    0x2B
+#define MPU9250_I2C_SLV2_REG     0x2C
+#define MPU9250_I2C_SLV2_CTRL    0x2D
+#define MPU9250_I2C_SLV3_ADDR    0x2E
+#define MPU9250_I2C_SLV3_REG     0x2F
+#define MPU9250_I2C_SLV3_CTRL    0x30
+#define MPU9250_I2C_SLV4_ADDR    0x31
+#define MPU9250_I2C_SLV4_REG     0x32
+#define MPU9250_I2C_SLV4_DO      0x33
+#define MPU9250_I2C_SLV4_CTRL    0x34
+#define MPU9250_I2C_SLV4_DI      0x35
+#define MPU9250_I2C_MST_STATUS   0x36
+#define MPU9250_INT_PIN_CFG      0x37
+#define MPU9250_INT_ENABLE       0x38
+#define MPU9250_INT_STATUS       0x3A
+#define MPU9250_ACCEL_XOUT_H     0x3B
+#define MPU9250_ACCEL_XOUT_L     0x3C
+#define MPU9250_ACCEL_YOUT_H     0x3D
+#define MPU9250_ACCEL_YOUT_L     0x3E
+#define MPU9250_ACCEL_ZOUT_H     0x3F
+#define MPU9250_ACCEL_ZOUT_L     0x40
+#define MPU9250_TEMP_OUT_H       0x41
+#define MPU9250_TEMP_OUT_L       0x42
+#define MPU9250_GYRO_XOUT_H      0x43
+#define MPU9250_GYRO_XOUT_L      0x44
+#define MPU9250_GYRO_YOUT_H      0x45
+#define MPU9250_GYRO_YOUT_L      0x46
+#define MPU9250_GYRO_ZOUT_H      0x47
+#define MPU9250_GYRO_ZOUT_L      0x48
+#define MPU9250_EXT_SENS_DATA_00 0x49
+#define MPU9250_EXT_SENS_DATA_01 0x4A
+#define MPU9250_EXT_SENS_DATA_02 0x4B
+#define MPU9250_EXT_SENS_DATA_03 0x4C
+#define MPU9250_EXT_SENS_DATA_04 0x4D
+#define MPU9250_EXT_SENS_DATA_05 0x4E
+#define MPU9250_EXT_SENS_DATA_06 0x4F
+#define MPU9250_EXT_SENS_DATA_07 0x50
+#define MPU9250_EXT_SENS_DATA_08 0x51
+#define MPU9250_EXT_SENS_DATA_09 0x52
+#define MPU9250_EXT_SENS_DATA_10 0x53
+#define MPU9250_EXT_SENS_DATA_11 0x54
+#define MPU9250_EXT_SENS_DATA_12 0x55
+#define MPU9250_EXT_SENS_DATA_13 0x56
+#define MPU9250_EXT_SENS_DATA_14 0x57
+#define MPU9250_EXT_SENS_DATA_15 0x58
+#define MPU9250_EXT_SENS_DATA_16 0x59
+#define MPU9250_EXT_SENS_DATA_17 0x5A
+#define MPU9250_EXT_SENS_DATA_18 0x5B
+#define MPU9250_EXT_SENS_DATA_19 0x5C
+#define MPU9250_EXT_SENS_DATA_20 0x5D
+#define MPU9250_EXT_SENS_DATA_21 0x5E
+#define MPU9250_EXT_SENS_DATA_22 0x5F
+#define MPU9250_EXT_SENS_DATA_23 0x60
+#define MPU9250_I2C_MST_DELAY_CTRL 0x67
+#define MPU9250_SIGNAL_PATH_RESET  0x68
+#define MPU9250_MOT_DETECT_CTRL   0x69
+#define MPU9250_USER_CTRL         0x6A
+#define MPU9250_PWR_MGMT_1        0x6B
+#define MPU9250_PWR_MGMT_2        0x6C
+#define MPU9250_FIFO_COUNTH       0x72
+#define MPU9250_FIFO_COUNTL       0x73
+#define MPU9250_FIFO_R_W          0x74
+#define MPU9250_WHO_AM_I          0x75
+#define MPU9250_XA_OFFSET_H       0x77
+#define MPU9250_XA_OFFSET_L       0x78
+#define MPU9250_YA_OFFSET_H       0x7A
+#define MPU9250_YA_OFFSET_L       0x7B
+#define MPU9250_ZA_OFFSET_H       0x7D
+#define MPU9250_ZA_OFFSET_L       0x7E
+
+// MPU9250 WHO_AM_I değeri
+#define MPU9250_WHO_AM_I_VALUE   0x71
+
+// Ölçek Faktörleri
+#define MPU9250_ACCEL_SCALE      16384.0f  // ±2g için
+#define MPU9250_GYRO_SCALE       131.0f    // ±250dps için
+#define MPU9250_TEMP_SCALE       333.87f
+#define MPU9250_TEMP_OFFSET      21.0f
+
+// MPU9250 Veri Yapısı
 typedef struct {
-    uint32_t timestamp;   // okuma zaman adimi  us
     int16_t accel_x;
     int16_t accel_y;
     int16_t accel_z;
@@ -15,106 +120,18 @@ typedef struct {
     int16_t gyro_x;
     int16_t gyro_y;
     int16_t gyro_z;
-} mpu9250_sensor_data_t;
+    uint32_t timestamp;
+} MPU9250_Data_t;
 
-//mpu verisini okur ve sensor data structina yazar.
-bool read_mpu9250(mpu9250_sensor_data_t* sensor_data);
+// Fonksiyon Prototipleri
+HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c);
+HAL_StatusTypeDef MPU9250_Trigger_Read(I2C_HandleTypeDef *hi2c);
+void MPU9250_Read_DMA_Complete_Callback(void);
+uint8_t MPU9250_IsDataReady(void);
+MPU9250_Data_t* MPU9250_GetData(void);
 
-//mpu okumasi icin donanimsal zamanlayici callback
-bool mpu9250_htimer_callback(struct repeating_timer *t);
-
-
+#ifdef __cplusplus
+}
 #endif
 
-/*
-
-#define I2C_PORT          i2c0
-#define I2C_BAUD          (400 * 1000)
-#define I2C_SDA_PIN       4
-#define I2C_SCL_PIN       5
-
-#define MPU_ADDR          0x68
-#define AK8963_ADDR       0x0C
-
-// MPU-9250 registers
-#define REG_PWR_MGMT_1    0x6B
-#define REG_CONFIG        0x1A
-#define REG_GYRO_CFG      0x1B
-#define REG_ACCEL_CFG     0x1C
-#define REG_INT_PIN_CFG   0x37
-#define REG_INT_ENABLE    0x38
-#define REG_ACCEL_XOUT_H  0x3B   // first of 14 bytes accel+gyro+temp
-
-// Data-ready flag
-static volatile bool mpu_drdy = false;
-
-// ───── Low-level I²C helpers ───────────────────────────────────────────────────
-static void i2c_write_byte(uint8_t reg, uint8_t data) {
-    uint8_t buf[2] = {reg, data};
-    i2c_write_blocking(I2C_PORT, MPU_ADDR, buf, 2, false);
-}
-
-static void i2c_read_bytes(uint8_t reg, uint8_t *dst, size_t n) {
-    i2c_write_blocking(I2C_PORT, MPU_ADDR, &reg, 1, true);
-    i2c_read_blocking (I2C_PORT, MPU_ADDR, dst,  n, false);
-}
-
-// ───── GPIO interrupt handler ─────────────────────────────────────────────────
-static void gpio_callback(uint gpio, uint32_t events) {
-    if (gpio == 16 && (events & GPIO_IRQ_EDGE_RISE))
-        mpu_drdy = true;
-}
-
-// ───── Sensor init ────────────────────────────────────────────────────────────
-static void mpu_init(void) {
-    sleep_ms(100);
-    i2c_write_byte(REG_PWR_MGMT_1, 0x01);      // clock = PLL
-    i2c_write_byte(REG_CONFIG,     0x03);      // DLPF 44 Hz
-    i2c_write_byte(REG_GYRO_CFG,   0x00);      // ±250 dps
-    i2c_write_byte(REG_ACCEL_CFG,  0x00);      // ±2 g
-
-    // Interrupt: active-high, push-pull, latched until status cleared
-    i2c_write_byte(REG_INT_PIN_CFG, 0x10);
-    i2c_write_byte(REG_INT_ENABLE,  0x01);     // Data Ready
-}
-
-
-// I²C
-    i2c_init(I2C_PORT, I2C_BAUD);
-    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA_PIN);
-    gpio_pull_up(I2C_SCL_PIN);
-
-    // INT pin
-    gpio_init(16);
-    gpio_set_dir(16, GPIO_IN);
-    gpio_pull_down(16);                       // ensure defined state
-    gpio_set_irq_enabled_with_callback(16, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
-
-    mpu_init();
-
-    uint8_t buf[14];
-    while (true) {
-        if (mpu_drdy) {
-            mpu_drdy = false;
-
-            i2c_read_bytes(REG_ACCEL_XOUT_H, buf, 14);
-
-            int16_t ax = (buf[0]  << 8) | buf[1];
-            int16_t ay = (buf[2]  << 8) | buf[3];
-            int16_t az = (buf[4]  << 8) | buf[5];
-            int16_t temp_raw = (buf[6]  << 8) | buf[7];
-            int16_t gx = (buf[8]  << 8) | buf[9];
-            int16_t gy = (buf[10] << 8) | buf[11];
-            int16_t gz = (buf[12] << 8) | buf[13];
-
-            // Convert to physical units if required; raw values shown here.
-            printf("A: %d %d %d  G: %d %d %d  T: %d\n", ax, ay, az, gx, gy, gz, temp_raw);
-        }
-        tight_loop_contents();
-    }
- 
-
-
-*/
+#endif /* INC_MPU9250_H_ */
