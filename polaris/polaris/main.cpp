@@ -29,6 +29,32 @@ int main()
 
     udpBroadcaster->stopRecurrentBroadcastingOnThread();
 
-    int a = 0;
-    std::cin>>a;
+    // ANA İŞLEM DÖNGÜSÜ - PULSE ↔ BIFROST
+        while (true) {
+            // Pulse'tan veri al
+            std::string pulseData = server.receiveData();
+            
+            if (pulseData == "<|closed|>" || pulseData == "<|error|>") {
+                std::cout << "Polaris: Pulse bağlantısı koptu" << std::endl;
+                break;
+            }
+            
+            if (!pulseData.empty()) {
+                // 🔄 BURADA: Veriyi işle ve Bifrost'a ilet
+                // Örnek: JSON'a çevir, WebSocket'e gönder, vs.
+                processAndForwardToBifrost(pulseData);
+            }
+            
+            // Bifrost'tan gelen komutları Pulse'a ilet
+            checkAndSendCommandsToPulse(server);
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Polaris Hatası: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
 }
