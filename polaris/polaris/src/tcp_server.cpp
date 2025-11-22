@@ -52,8 +52,6 @@ bool TCPServer::acceptClient() {
     }
     std::cout << "Client baglandi" << std::endl;
 
-    pingPongLoop();
-
     return true;
 }
 
@@ -90,33 +88,3 @@ void TCPServer::closeServer() {
     if (server_fd != -1) close(server_fd);
 }
 
-//bura duzenlenecek
-// BASİT PING GÖNDER
-void TCPServer::sendPing() {
-    if (!isConnected()) return;
-    sendData("PING");
-    std::cout << "PING gönderildi -> Pulse" << std::endl;
-}
-/*void TCPServer::pingPongLoop() {
-    bool isError = false;
-    
-    while (!isError) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(pingPongWaitMS));
-            
-        sendData("PING");
-        
-        std::string received = receiveData();
-
-        if((received == "<|closed|>") || received == "<|error|>")
-        {
-            std::cout << received;
-            break;    
-        }
-
-        std::cout<<received;
-    }
-}*/
-
-void TCPServer::enqueueMessage(const std::string& message) {
-    messageQueue.push(message);
-}
