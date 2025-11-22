@@ -64,14 +64,14 @@ std::string TCPServer::receiveData() {
     if (bytesReceived == 0) {
         std::cout << "Bağlantı istemci tarafından sonlandırıldı." << std::endl;
         close(client_fd);
-
+        client_fd = -1;
         return "<|closed|>";
     }
 
     if (bytesReceived == -1) {
         std::cout << "Ağ problemi!" << std::endl;
         close(client_fd);
-
+        client_fd = -1;
         return "<|error|>";
     }
 
@@ -79,6 +79,7 @@ std::string TCPServer::receiveData() {
 }
 
 void TCPServer::sendData(const std::string& data) {
+    if (!isConnected()) return;
     const char* c_data = data.c_str();
     
     send(client_fd, c_data, strlen(c_data), 0);
@@ -90,7 +91,13 @@ void TCPServer::closeServer() {
 }
 
 //bura duzenlenecek
-void TCPServer::pingPongLoop() {
+// BASİT PING GÖNDER
+void TCPServer::sendPing() {
+    if (!isConnected()) return;
+    sendData("PING");
+    std::cout << "PING gönderildi -> Pulse" << std::endl;
+}
+/*void TCPServer::pingPongLoop() {
     bool isError = false;
     
     while (!isError) {
@@ -108,7 +115,7 @@ void TCPServer::pingPongLoop() {
 
         std::cout<<received;
     }
-}
+}*/
 
 void TCPServer::enqueueMessage(const std::string& message) {
     messageQueue.push(message);
