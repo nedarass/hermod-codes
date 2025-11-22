@@ -9,11 +9,12 @@
 #include "shared_data.h"
 #include "communication.h"
 #include "commands.h"
+#include "optics.h"  
 
 // --- SÜRÜCÜ BAŞLIK DOSYALARI ---
 #include "ntc_sensor.h"
 #include "encoder.h"
-#include "mpu9250_driver.h"
+#include "mpu9250.h"
 #include "navigation.h"
 
 // --- AKTÜATÖR SÜRÜCÜLERİ (Otonom kontrol için) ---
@@ -38,6 +39,11 @@ static uint32_t last_sensor_update = 0; // 10ms (100 Hz)
 static uint32_t last_telemetry_tx = 0;  // 100ms (10 Hz)
 static uint32_t last_health_tx = 0;     // 1000ms (1 Hz)
 
+// --- OTONOM KONTROL DEĞİŞKENLERİ ---
+static float target_speed_mps = 0.0f;
+static const float EMERGENCY_SPEED = 90.0f;
+static const float MAX_SAFE_SPEED = 80.0f;
+
 // Navigasyon ve Kontrol döngüsü periyodu (Saniye cinsinden)
 static const float DT = 0.01f; 
 
@@ -60,6 +66,9 @@ void CONTROL_Init(void)
 
     // Navigasyon (Kalman Filtresi) Başlatma
     NAVIGATION_Init();
+
+    // OPTICS Başlatma 
+    OPTICS_Init();
 
     // 2. Haberleşmeyi Başlat (UART Kesmesi)
     COMM_Init();
@@ -115,11 +124,10 @@ void CONTROL_AutonomousDecisions(void)
         return;
     }
  
-   // 4. ACİL: OMRON ENGEL TESPİTİ! - ✅ BURADA KARAR VERİLİYOR!
+   // 4. ACİL: OMRON ENGEL TESPİTİ! -
     if (OPTICS_IsEmergencyObstacleDetected()) {
         printf("🚨🚨 ACİL DURUM: Omron engel tespit edildi! Frenleme yapılıyor...\r\n");
         
-        // ✅ ACTUATOR KONTROLÜ SADECE BURADA!
         SYSTEM_EmergencyPowerCut();
         BRAKES_EmergencyEngage();
         
@@ -213,13 +221,13 @@ void CONTROL_Loop(void)
 {
     uint32_t current_tick = HAL_GetTick();
 
+    CONTROL_HandleErrors();
     // ============================================================
     // 1. SENSÖR OKUMA VE NAVİGASYON (Her 10ms'de bir)
     // ============================================================
     if (current_tick - last_sensor_update >= 10)
     {
-       // sonradan eklendi 
-        CONTROL_HandleErrors();
+      
         // --- A. Sensör Güncellemeleri ---
         
         // NTC (Sıcaklık) Okuması:
@@ -235,7 +243,7 @@ void CONTROL_Loop(void)
         // CPU'yu bekletmez.
         MPU9250_Trigger_Read(&hi2c1); 
 
-        
+        OPTICS_Update();
         // --- B. Sensör Füzyonu (Navigation) ---
         // MPU ve Encoder'dan gelen en son verileri birleştirir.
         // Not: MPU verisi bir önceki döngüden veya DMA kesmesinden gelmiş olabilir.
@@ -246,15 +254,8 @@ void CONTROL_Loop(void)
         // ========================
         CONTROL_AutonomousDecisions();
 
-        
-        // --- C. Güvenlik Kontrolleri ---
-        // Örnek: Aşırı sıcaklık kontrolü
-        if (g_system_state.raw_temp_ntc1 > 8500) { // 85.00 C
-             // Aşırı sıcaklık durumunda yapılacaklar (örn: Güç azaltma)
-        }
-
         last_sensor_update = current_tick;
-    }
+        }
 
     // ============================================================
     // 2. TELEMETRİ GÖNDERİMİ (Her 100ms'de bir)
