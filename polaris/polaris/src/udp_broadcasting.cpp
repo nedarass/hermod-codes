@@ -82,7 +82,9 @@ void UDPBroadcasting::startRecurrentBroadcastingOnThread()
 void UDPBroadcasting::stopRecurrentBroadcastingOnThread()
 {
     stopRequested.store(true);
-    if (broadcastThread->joinable()) {
+    if (broadcastThread && broadcastThread->joinable()) {
         broadcastThread->join();
+        delete broadcastThread;
+        broadcastThread = nullptr;
     }
 }
