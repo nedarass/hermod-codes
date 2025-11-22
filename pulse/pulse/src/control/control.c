@@ -114,6 +114,20 @@ void CONTROL_AutonomousDecisions(void)
         
         return;
     }
+ 
+   // 4. ACİL: OMRON ENGEL TESPİTİ! - ✅ BURADA KARAR VERİLİYOR!
+    if (OPTICS_IsEmergencyObstacleDetected()) {
+        printf("🚨🚨 ACİL DURUM: Omron engel tespit edildi! Frenleme yapılıyor...\r\n");
+        
+        // ✅ ACTUATOR KONTROLÜ SADECE BURADA!
+        SYSTEM_EmergencyPowerCut();
+        BRAKES_EmergencyEngage();
+        
+        // Flag'i temizle (bir sonraki döngüde tekrar kontrol et)
+        OPTICS_ClearEmergencyFlag();
+        
+        return; // Diğer kararları engelle
+    }
     
     // 1. HIZ KONTROLÜ - Aşırı hız koruması
     if (g_system_state.velocity_mps > MAX_SAFE_SPEED) {
