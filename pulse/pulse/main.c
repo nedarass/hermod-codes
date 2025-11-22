@@ -100,13 +100,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 // Eğer orada "weak" tanımlı değilse hata verebilir. Genelde HAL callbackleri main.c'de tutulur
 // ama modülerlik için driver içine taşıdıysanız burayı yorum satırı yapın.)
 
-/*
+
+
+// I2C DMA Tamamlandı Callback
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    // Bu fonksiyon mpu9250_driver.c içinde tanımlandıysa burayı boş bırakın
-    // veya oradaki fonksiyonu çağırın.
+    if (hi2c->Instance == I2C1) { // MPU9250'nin bağlı olduğu I2C
+        MPU9250_Read_DMA_Complete_Callback();
+    }
 }
-*/
+
+// I2C Hata Callback
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        MPU9250_Error_Callback();
+    }
+}
 
 /* USER CODE END 0 */
 
