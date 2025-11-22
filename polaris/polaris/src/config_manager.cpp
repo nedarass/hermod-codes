@@ -9,12 +9,24 @@ bool ConfigManager::fileExists() const {
 }
 
 ConfigManager::ConfigManager(const std::string& filename)
-    : configFilename(filename), name("HermodPrototypeVehicle"), ipAddress("192.168.1.100"), port(12345), broadcastingAddress("255.255.255.255"), broadcastingPort(12321)
+    : configFilename(filename)  // ✅ Önce sadece filename
 {
-    //eger dosya varsa dosyayi oku eger oksa default degerlerle yeni dosya kaydet
-    if (!fileExists() || !loadConfig()) {
+    // Default değerleri set et
+    name = "HermodPrototypeVehicle";
+    ipAddress = "192.168.1.100";
+    port = 12345;
+    broadcastingAddress = "255.255.255.255";
+    broadcastingPort = 12321;
+    
+    // Dosya yükleme
+    if (fileExists()) {
+        if (!loadConfig()) {
+            std::cerr << "Uyarı: Config dosyası okunamadı, default değerler kullanılıyor" << std::endl;
+        }
+    } else {
+        // Yeni dosya oluştur
         if (!saveConfig()) {
-            std::cerr << "config kaydedilemdei: " << configFilename << std::endl;
+            throw std::runtime_error("Config dosyası oluşturulamadı: " + configFilename);
         }
     }
 }
