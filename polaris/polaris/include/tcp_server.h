@@ -28,6 +28,8 @@ public:
 
     void enqueueMessage(const std::string& message);
 
+    bool isConnected() const { return client_fd != -1; }
+
 private:
     int port;
     int server_fd, client_fd;
