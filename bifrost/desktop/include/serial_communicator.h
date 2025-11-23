@@ -22,7 +22,7 @@ public:
     Q_INVOKABLE void closePort();
     Q_INVOKABLE void sendData(const QByteArray &data);
 
-    /*public slots:
+    public slots:
     // QML'den çağrılacak yeni komut gönderme fonksiyonları
     void sendBrakeCommand(quint8 force);             // CMD_BRAKE_ACTUATE (0xA1)
     void sendTargetSpeedCommand(float speed_mps);    // CMD_SET_TARGET_SPEED (0xA2)
@@ -45,7 +45,7 @@ private:
     // ... Diğer protokol ID'leri buraya (0xA1, 0xA2, vs.)
 
     // Ana veri gönderme helper fonksiyonu
-    void sendCommandPacket(quint8 id, quint8 type, const QByteArray &payload);*/
+    void sendCommandPacket(quint8 id, quint8 type, const QByteArray &payload);
 
 signals:
     // Ham veri (işlenmemiş haliyle)
