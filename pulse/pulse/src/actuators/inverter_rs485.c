@@ -27,38 +27,61 @@ void INVERTER_Init(UART_HandleTypeDef *huart)
 {
     if (huart == NULL) return;
     rs485_huart = huart;
-    HAL_GPIO_WritePin(RS485_DE_GPIO_Port, RS485_DE_Pin, GPIO_PIN_RESET); // Dinleme Modu
+    // bu cubemx e göre sanırım 
+    #ifdef RS485_DE_Pin
+    HAL_GPIO_WritePin(RS485_DE_GPIO_Port, RS485_DE_Pin, GPIO_PIN_RESET);
+#endif
     inverter_state = INVERTER_STATE_READY;
     shared_data.actuators.inverter_state = inverter_state;
+    // burda güncellenmeli mi 
+    last_communication_time = HAL_GetTick();
 }
 
 // --- INVERTER_Write --- RS485 üzerinden veri gönderir.
 // ÖNEMLİ: Göndermeden önce DE pinini açar (Transmitter On), bitince kapatır (Receiver On).
+// --- INVERTER_Write --- RS485 üzerinden veri gönderir.
 bool INVERTER_Write(uint8_t *data, uint16_t len)
 {
+    // Güvenlik kontrolü: UART veya Veri yoksa işlem yapma
     if (rs485_huart == NULL || data == NULL) return false;
 
-    // 1. Konuşma Moduna Geç (TX Enable)
+    // 1. ADIM: Konuşma Moduna Geç (DE = HIGH)
+    // Transceiver çipine "Ben konuşacağım, hattı bana ver" diyoruz.
+#ifdef RS485_DE_Pin
     HAL_GPIO_WritePin(RS485_DE_GPIO_Port, RS485_DE_Pin, GPIO_PIN_SET);
+#endif
     
-    // Kısa bekleme (Çipin uyanması için)
-    for (volatile int i = 0; i < 100; i++); 
-    
-    // 2. Veriyi Gönder
-    HAL_StatusTypeDef status = HAL_UART_Transmit(rs485_huart, data, len, 100);
+    // Transceiver'ın mod değiştirmesi için mikrosaniye mertebesinde bekleme (Opsiyonel ama güvenli)
+    for (volatile int i = 0; i < 50; i++); 
 
-    // 3. Veri bitene kadar bekle ve Dinleme Moduna Geç
-    for (volatile int i = 0; i < 100; i++); 
+    // 2. ADIM: Veriyi UART Tamponuna Yolla
+    // Timeout süresi 10ms (Baud rate'e göre değişir ama genelde yeterlidir)
+    HAL_StatusTypeDef status = HAL_UART_Transmit(rs485_huart, data, len, 10);
+
+    if (status == HAL_OK)
+    {
+        // 3. ADIM: KRİTİK BEKLEME (Busy Wait)
+        // HAL_UART_Transmit bitti dese bile, son bit kablodan çıkmamış olabilir.
+        // "Transmission Complete" (TC) bayrağı 1 olana kadar işlemciyi burada tutuyoruz.
+        // Döngü içi boştur çünkü sadece bayrağın değişmesini bekliyoruz.
+        while (__HAL_UART_GET_FLAG(rs485_huart, UART_FLAG_TC) == RESET);
+    }
+
+    // 4. ADIM: Dinleme Moduna Geç (DE = LOW)
+    // Veri tamamen gittiğine göre artık hattı dinleyebiliriz.
+#ifdef RS485_DE_Pin
     HAL_GPIO_WritePin(RS485_DE_GPIO_Port, RS485_DE_Pin, GPIO_PIN_RESET);
+#endif
 
+    // Sonuç Yönetimi
     if (status == HAL_OK) {
         last_communication_time = HAL_GetTick();
         return true;
+    } else {
+        inverter_state = INVERTER_STATE_ERROR;
+        shared_data.actuators.inverter_state = inverter_state;
+        return false;
     }
-    
-    inverter_state = INVERTER_STATE_ERROR;
-    shared_data.actuators.inverter_state = inverter_state;
-    return false;
 }
 
 // --- INVERTER_SetRPM --- İstenilen hızı Modbus paketine çevirir, CRC ekler ve gönderir.
@@ -98,6 +121,7 @@ InverterState_t INVERTER_GetState(void)
 {
     if ((HAL_GetTick() - last_communication_time) > 1000) { // 1 saniye sessizlik = Hata
         inverter_state = INVERTER_STATE_ERROR;
+        shared_data.actuators.inverter_state = inverter_state;
     }
     return inverter_state;
 }
