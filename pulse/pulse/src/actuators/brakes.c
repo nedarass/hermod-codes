@@ -100,7 +100,7 @@ BrakeError_t BRAKES_GetLastError(void)
             {
                 // Sensör kontrolü: Fren kapandığında sensör 1 (SET) olmalı.
                 // Eğer hala 0 (RESET) ise mekanik bir sıkışma veya arıza var demektir.
-                if (READ_BRAKE_SENSOR() == GPIO_PIN_RESET) 
+                if (HAL_GPIO_ReadPin(BRAKE_SENSOR_GPIO_Port, BRAKE_SENSOR_Pin) == GPIO_PIN_RESET) 
                 {
                     last_brake_error = BRAKE_ERROR_TIMEOUT;
                     
