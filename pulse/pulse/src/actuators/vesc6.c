@@ -106,6 +106,72 @@ bool VESC_SetCurrent(int32_t current_ma)
     return success;
 }
 
+// --- YENİ EKLENENLER: Veri Okuma ---
+
+// 1. Veri İste (Request Status)
+bool VESC_RequestStatus(void)
+{
+    if (vesc_huart == NULL) return false;
+    uint8_t payload[1];
+    payload[0] = 0x04; // COMM_GET_VALUES (VESC'den tüm telemetriyi ister)
+    return VESC_SendPacket(payload, 1);
+}
+
+// 2. Gelen Veriyi Çöz (Parse Status)
+// Bu fonksiyon, UART RX Interrupt (Kesme) içinde veya DMA buffer okunduğunda çağrılmalıdır.
+// Basitleştirilmiş örnek: buffer'ın tam bir VESC paketi olduğunu varsayar.
+bool VESC_ParseStatus(uint8_t *buffer, uint16_t len)
+{
+    // Minimum uzunluk ve CRC kontrolü yapılmalı... (Burada özet geçiyorum)
+    // VESC Response Format (COMM_GET_VALUES):
+    // [ID(0x04)] [Temp MOS] [Temp Motor] [Current Motor] [Current Input] ...
+    
+    if (buffer[0] != 0x04) return false;
+
+    int32_t ind = 1;
+
+    // VESC protokolünde değerler genellikle 16-bit veya 32-bit Scaled Integer olarak gelir.
+    // Örnek: Sıcaklık (x10), Akım (x100), Voltaj (x10) vb. 
+    // *Not: Bu detaylı protokol VESC firmware sürümüne göre değişebilir.*
+
+    // ÖRNEK OKUMA (Sıralama standart VESC FW'ye göredir):
+    // Temp MOSFET (2 byte, scale 10)
+    int16_t temp_mos = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
+    local_vesc_status.temperature = (float)temp_mos / 10.0f;
+
+    // Temp Motor (2 byte, scale 10)
+    ind += 2; // Atla
+
+    // Motor Current (4 byte, scale 100)
+    int32_t current = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
+    ind += 4;
+    local_vesc_status.current = current / 100; // Amper'e çevir
+
+    // Input Current (4 byte)
+    ind += 4; // Atla
+
+    // ID (4 byte)
+    ind += 4; // Atla
+
+    // Z (4 byte)
+    ind += 4; // Atla
+
+    // Input Voltage (2 byte, scale 10)
+    int16_t voltage = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
+    local_vesc_status.voltage = (float)voltage / 10.0f;
+
+    // RPM (4 byte, scale 1)
+    local_vesc_status.rpm = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
+    
+    // --- Shared Data Güncelleme ---
+    shared_data.actuators.vesc_status.rpm = local_vesc_status.rpm;
+    shared_data.actuators.vesc_status.current = local_vesc_status.current;
+    shared_data.actuators.vesc_status.voltage = local_vesc_status.voltage;
+    shared_data.actuators.vesc_status.temperature = local_vesc_status.temperature;
+
+    return true;
+}
+
 
 
 
