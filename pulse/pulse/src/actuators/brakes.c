@@ -87,6 +87,30 @@ bool BRAKES_IsEngaged(void)
 // --- BRAKES_GetLastError --- Fren sistemindeki son hatayı döndürür.
 BrakeError_t BRAKES_GetLastError(void)
 {
+    // Eğer zaten bir aşırı akım vs. hatası varsa onu koru, yoksa timeout kontrolü yap
+    if (last_brake_error == BRAKE_ERROR_NONE)
+    {
+        // Senaryo: Frenleri kilitle (ENGAGED) dedik ama sensör hala "Açık" mı?
+        if (current_brake_state == BRAKE_ENGAGED)
+        {
+            uint32_t time_passed = HAL_GetTick() - brake_engagement_time;
+            
+            // Süre doldu mu? (1 saniye)
+            if (time_passed > BRAKE_TIMEOUT_MS)
+            {
+                // Sensör kontrolü: Fren kapandığında sensör 1 (SET) olmalı.
+                // Eğer hala 0 (RESET) ise mekanik bir sıkışma veya arıza var demektir.
+                if (READ_BRAKE_SENSOR() == GPIO_PIN_RESET) 
+                {
+                    last_brake_error = BRAKE_ERROR_TIMEOUT;
+                    
+                    // Tespit edilen hatayı shared_data'ya da hemen yansıt
+                    shared_data.actuators.brake_error = last_brake_error;
+                }
+            }
+        }
+    }
+    
     return last_brake_error;
 }
 
