@@ -7,6 +7,20 @@
 static BrakeState_t current_brake_state = BRAKE_ENGAGED; 
 static BrakeError_t last_brake_error = BRAKE_ERROR_NONE;
 static uint32_t brake_engagement_time = 0;
+static const uint32_t BRAKE_TIMEOUT_MS = 1000; // yeni - frenlerin kapanması için tanıdığımız max süre 
+
+// --- 1. BRAKES_Init (YENİ EKLENDİ) ---
+// Sistemi açılışta güvenli hale getirir.
+void BRAKES_Init(void)
+{
+    // 1. Yazılımsal değişkenleri güvenli duruma çek
+    current_brake_state = BRAKE_ENGAGED;
+    last_brake_error = BRAKE_ERROR_NONE;
+    
+    // 2. Donanımı güvenli duruma (Frenle) çek
+    // Not: SetState fonksiyonunu kullanarak yapıyoruz ki pin kontrolü tek yerden olsun.
+    BRAKES_SetState(BRAKE_ENGAGED);
+}
 
 // --- BRAKES_SetState --- Frenleri sıkmaya (ENGAGED) veya serbest bırakmaya (RELEASED) yarar.
 // GÜVENLİK KONTROLÜ: Eğer sistem "Acil Durum"daysa frenlerin açılmasına İZİN VERMEZ.
@@ -15,6 +29,7 @@ void BRAKES_SetState(BrakeState_t state)
     // Acil durum kontrolü (Safety First)
     if (shared_data.system.emergency_mode && state != BRAKE_ENGAGED) {
         state = BRAKE_ENGAGED; // Zorla frenle
+        // burda last engagement ı güncellesek mi ? 
     }
     
     // Donanıma göre mantık: (Genelde LOW = Frenle, HIGH = Bırak)
@@ -29,13 +44,19 @@ void BRAKES_SetState(BrakeState_t state)
     HAL_GPIO_WritePin(BRAKE_2_GPIO_Port, BRAKE_2_Pin, pin_val);
 #endif
 
+    // yeni ekledim error kontorlu için 
+    if (current_brake_state != state) {
+        brake_engagement_time = HAL_GetTick(); 
+        last_brake_error = BRAKE_ERROR_NONE; // Yeni işlemde eski hatayı temizle
+    }
+    
     current_brake_state = state;
-    brake_engagement_time = HAL_GetTick();
+    
     
     // Durumu raporla
     shared_data.actuators.brake_state = current_brake_state;
-    shared_data.actuators.brake_error = last_brake_error;
     shared_data.actuators.brake_engagement_time = brake_engagement_time;
+    shared_data.actuators.brake_error = last_brake_error;
 }
 
 // --- BRAKES_EmergencyEngage ---Yüksek öncelikli ACİL FREN fonksiyonu. Yazılımsal kontrolleri atlayıp donanımı doğrudan kilitler.
