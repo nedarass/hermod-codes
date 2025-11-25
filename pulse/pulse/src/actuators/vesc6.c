@@ -137,7 +137,7 @@ bool VESC_ParseStatus(uint8_t *buffer, uint16_t len)
     // ÖRNEK OKUMA (Sıralama standart VESC FW'ye göredir):
     // Temp MOSFET (2 byte, scale 10)
     int16_t temp_mos = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
-    local_vesc_status.temperature = (float)temp_mos / 10.0f;
+    vesc_status.temperature = (float)temp_mos / 10.0f;
 
     // Temp Motor (2 byte, scale 10)
     ind += 2; // Atla
@@ -145,7 +145,7 @@ bool VESC_ParseStatus(uint8_t *buffer, uint16_t len)
     // Motor Current (4 byte, scale 100)
     int32_t current = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
     ind += 4;
-    local_vesc_status.current = current / 100; // Amper'e çevir
+    vesc_status.current = current / 100; // Amper'e çevir
 
     // Input Current (4 byte)
     ind += 4; // Atla
@@ -158,16 +158,16 @@ bool VESC_ParseStatus(uint8_t *buffer, uint16_t len)
 
     // Input Voltage (2 byte, scale 10)
     int16_t voltage = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
-    local_vesc_status.voltage = (float)voltage / 10.0f;
+    vesc_status.voltage = (float)voltage / 10.0f;
 
     // RPM (4 byte, scale 1)
-    local_vesc_status.rpm = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
+    vesc_status.rpm = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
     
     // --- Shared Data Güncelleme ---
-    shared_data.actuators.vesc_status.rpm = local_vesc_status.rpm;
-    shared_data.actuators.vesc_status.current = local_vesc_status.current;
-    shared_data.actuators.vesc_status.voltage = local_vesc_status.voltage;
-    shared_data.actuators.vesc_status.temperature = local_vesc_status.temperature;
+    shared_data.actuators.vesc_status.rpm = vesc_status.rpm;
+    shared_data.actuators.vesc_status.current = vesc_status.current;
+    shared_data.actuators.vesc_status.voltage = vesc_status.voltage;
+    shared_data.actuators.vesc_status.temperature = vesc_status.temperature;
 
     return true;
 }
