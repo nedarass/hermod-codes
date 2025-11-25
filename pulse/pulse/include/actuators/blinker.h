@@ -27,7 +27,8 @@ void BLINKER_Set(bool status);
 // Belirli bir süre boyunca LED'i yakıp söndürür (Non-blocking olması tercih edilir). Control döngüsü içinde sayaç ile yönetilmesi daha uygundur.
 void BLINKER_Toggle(void);
 void BLINKER_UpdateNonBlocking(void); // 100ms timer interrupt'ta çağrılacak // Non-blocking yanıp sönme için (Timer interrupt veya loop içinde çağrılır)
-
+void BLINKER_StartBlinking();
+void BLINKER_StopBlinking() ;
 #ifdef __cplusplus
 }
 #endif
