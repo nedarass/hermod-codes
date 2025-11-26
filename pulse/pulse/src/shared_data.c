@@ -30,3 +30,10 @@ void __attribute__((constructor)) init_system_state(void) {
     g_system_state.power_line_status = 1; // Güç var varsayalım
     g_system_state.brake_status = 0;      // Frenler açık (serbest) başlasın
 }
+
+/* /* Core/Src/shared_data.c */
+#include "shared_data.h"
+
+// Tüm sistemin kullanacağı devasa veri yapısı burada RAM'de oluşturulur.
+// Başlangıçta her şey 0 olsun diye {0} ile başlatıyoruz.
+shared_data_t shared_data = {0};*/
