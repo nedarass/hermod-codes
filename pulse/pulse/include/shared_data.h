@@ -1,8 +1,8 @@
 /*
  * Core/Inc/shared_data.h
  *
- * Açıklama: Sistemdeki tüm sensör verilerini ve durum bayraklarını
- * tutan merkezi veri yapısıdır.
+ * Açıklama: Sistemdeki tüm sensör ve aktüatör verilerini
+ * hiyerarşik (katmanlı) bir yapıda tutan merkezi veri havuzudur.
  */
 
 #ifndef INC_SHARED_DATA_H_
@@ -12,51 +12,89 @@
 extern "C" {
 #endif
 
-#include "main.h" // HAL tipleri ve uint tanımları için
+#include "main.h"
 #include <stdint.h>
+#include <stdbool.h> // bool tipi için gerekli
 
-// ---------------------------------------------------------------------------
-// --- MERKEZİ SİSTEM DURUM YAPISI ---
-// ---------------------------------------------------------------------------
+// ============================================================================
+// --- ALT YAPILAR (Sub-Structs) ---
+// ============================================================================
+
+// 1. ENCODER VERİLERİ (sensors/encoder.c için)
 typedef struct {
-    // --- SENSÖR VE FİZİKSEL VERİLER (Monitoring Page) ---
-    float velocity_mps;         // Anlık Hız (m/s) - [Encoder + Navigasyon]
-    float acceleration_mss;     // Anlık İvme (m/s^2) - [MPU9250]
-    float position_m;           // Konum (m) - [Encoder + Navigasyon]
+    float velocity_mps;      // Anlık Hız (m/s)
+    float position_m;        // Konum (m)
+    int64_t total_pulse;     // Toplam Pulse Sayısı (Debug için)
+} EncoderData_t;
+
+// 2. VESC MOTOR SÜRÜCÜ VERİLERİ (actuators/vesc6.c için)
+typedef struct {
+    int32_t rpm;             // Motor Devri
+    int32_t current;         // Motor Akımı (mA veya Amper/100)
+    float voltage;           // Giriş Voltajı
+    float temperature;       // Motor/Sürücü Sıcaklığı
+} VESC_Data_t;
+
+// ============================================================================
+// --- ANA VERİ YAPISI ---
+// ============================================================================
+
+typedef struct {
     
-    uint16_t raw_voltage_mv;    // Batarya Voltajı (mV)
-    int16_t raw_current_ma;     // Çekilen Akım (mA)
-    float power_w;              // Anlık Güç (W)
-    
-    int16_t raw_temp_ntc1;      // Sıcaklık (Santigrat * 100 formatında. Örn: 2550 = 25.50 C)
-    
-    uint8_t brake_status;       // Fren Durumu (0: Açık/Serbest, 1: Kapalı/Frenli)
+    // --- A. SİSTEM GENEL DURUMU (System) ---
+    struct {
+        bool emergency_mode;     // ACİL DURUM MODU (True: Sistem Kilitli)
+        uint32_t error_flags;    // Genel Hata Bayrakları
+        uint32_t run_time_ms;    // Sistem çalışma süresi
+    } system;
 
-    // --- SİSTEM SAĞLIK VERİLERİ (Health Check Page) ---
-    float cpu_temp_c;           // İşlemci Sıcaklığı
-    uint32_t error_flags;       // Hata Bayrakları (Bitmask)
-    uint16_t ping_ms;           // Haberleşme Gecikmesi (ms)
-    uint8_t power_line_status;  // Güç Hattı Durumu (0: OFF, 1: ON)
-    uint8_t rtos_task_status;   // (Opsiyonel) Görev Durumu
+    // --- B. SENSÖRLER (Sensors) ---
+    struct {
+        EncoderData_t encoder;   // Encoder verileri burada
+        
+        // İlerde eklenecekler:
+        // MPUSensor_t mpu;
+        // BatterySensor_t battery;
+    } sensors;
 
-} System_State_t;
+    // --- C. AKTÜATÖRLER (Actuators) ---
+    struct {
+        // 1. Blinker (Işık)
+        uint8_t blinker_state;      // 0:Off, 1:On, 2:Blink
+        
+        // 2. Frenler (Brakes)
+        uint8_t brake_state;        // 0:Released, 1:Engaged
+        uint8_t brake_error;        // Hata Kodu
+        uint32_t brake_engagement_time; // Son işlem zamanı
+        
+        // 3. Güç Kesici (Power Cut)
+        uint8_t power_state;        // 0:Off, 1:On, 2:Emergency
+        
+        // 4. Ana Motor (Inverter / VESC)
+        int32_t target_rpm;         // Hedeflenen Hız
+        uint8_t inverter_state;     // Sürücü Durumu (Ready, Running, Error)
+        VESC_Data_t vesc_status;    // VESC'den okunan gerçek veriler
+        
+    } actuators;
 
+} shared_data_t;
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // --- GLOBAL ERİŞİM ---
-// ---------------------------------------------------------------------------
-// Bu değişken shared_data.c'de oluşturulur, diğer herkes buradan erişir.
-extern System_State_t g_system_state;
+// ============================================================================
+
+// Tüm .c dosyaları bu değişkeni kullanacak.
+// shared_data.c dosyasında "shared_data_t shared_data;" olarak tanımlanmalı.
+extern shared_data_t shared_data;
 
 
-// ---------------------------------------------------------------------------
-// --- HATA BAYRAKLARI (Bitmask Tanımları) ---
-// ---------------------------------------------------------------------------
-// error_flags değişkeni içindeki bitlerin anlamları
-#define ERR_FLAG_MPU_FAIL       (1 << 0) // Bit 0: MPU Sensör Hatası
-#define ERR_FLAG_NTC_OOR        (1 << 1) // Bit 1: Sıcaklık Limit Dışı (Out of Range)
-#define ERR_FLAG_COMM_TIMEOUT   (1 << 2) // Bit 2: Haberleşme Kesildi
-#define ERR_FLAG_POWER_TRIP     (1 << 3) // Bit 3: Güç Kesintisi/Düşük Voltaj
+// ============================================================================
+// --- HATA BAYRAKLARI (Bitmask) ---
+// ============================================================================
+#define ERR_FLAG_MPU_FAIL       (1 << 0)
+#define ERR_FLAG_NTC_OOR        (1 << 1)
+#define ERR_FLAG_COMM_TIMEOUT   (1 << 2)
+#define ERR_FLAG_POWER_TRIP     (1 << 3)
 
 #ifdef __cplusplus
 }
