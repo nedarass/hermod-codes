@@ -1,4 +1,3 @@
-#include "actuators/brakes.h" // yeni ekledim brakes_emergencyengage kullanabilmek için 
 #include "actuators/power_cut.h"
 #include "shared_data.h"
 
@@ -47,7 +46,8 @@ void POWERCUT_TriggerEmergency(void)
     shared_data.actuators.power_state = POWER_STATE_EMERGENCY_OFF;
     
     // Frenleri de kilitle!
-    BRAKES_EmergencyEngage();
+    shared_data.actuators.emergency_brake_request = true;
+
 }
 
 
