@@ -4,9 +4,6 @@
 #include "shared_data.h"
 #include <stdio.h> // printf için
 
-// Global sistem durum yapısı (Veriyi buraya yazacağız)
-extern System_State_t g_system_state;
-
 // --- AYARLANABİLİR SABİTLER ---
 // Bu değerleri kullandığın donanıma (Encoder ve Tekerlek) göre değiştirmelisin!
 #define ENCODER_COUNTS_PER_REV  4096.0f // Encoder'ın bir tam turu için ürettiği toplam sayım (Pulse/Rev)
@@ -43,6 +40,7 @@ void ENCODER_Update(TIM_HandleTypeDef *htim)
     uint32_t current_counter_value = __HAL_TIM_GET_COUNTER(htim);
 
     // 2. Değişimi (Delta) Hesapla
+    // timer a göre değişebilri !!!
     int16_t delta_counts = (int16_t)(current_counter_value - (uint32_t)last_counter_value);
 
     // 3. Toplam Mesafeyi Güncelle (Absolute Position)
