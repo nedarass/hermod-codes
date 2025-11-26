@@ -55,9 +55,10 @@ void ENCODER_Update(TIM_HandleTypeDef *htim)
     // b) Toplam Konum (Metre)
     float position_m = ((float)total_pulse_count / ENCODER_COUNTS_PER_REV) * WHEEL_CIRCUMFERENCE_M;
 
-    // 5. Verileri Global Yapıya (Shared Data) Yaz
-    g_system_state.velocity_mps = velocity_mps;
-    g_system_state.position_m   = position_m;
+   // Veri yolunu takip et: shared_data -> sensors -> encoder -> degisken
+    shared_data.sensors.encoder.velocity_mps = filtered_velocity; // Filtrelenmiş hız
+    shared_data.sensors.encoder.position_m   = position_m;
+    shared_data.sensors.encoder.total_pulse  = total_pulse_count; // Debug için ekledik
 
     // 6. Son değeri sakla (Bir sonraki döngü için)
     last_counter_value = current_counter_value;
