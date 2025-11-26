@@ -35,6 +35,17 @@ typedef struct {
     float temperature;       // Motor/Sürücü Sıcaklığı
 } VESC_Data_t;
 
+// 3. MPU9250 IMU SENSÖR VERİLERİ (sensors/mpu9250.c için)
+typedef struct {
+    float accel_x_mss;       // X Ekseni İvme (m/s^2)
+    float accel_y_mss;       // Y Ekseni İvme
+    float accel_z_mss;       // Z Ekseni İvme
+    float gyro_x_dps;        // X Ekseni Açısal Hız (derece/saniye)
+    float gyro_y_dps;        // Y Ekseni Açısal Hız
+    float gyro_z_dps;        // Z Ekseni Açısal Hız
+    float temp_c;            // Sensör Sıcaklığı (C)
+} MPUSensor_t;
+
 // ============================================================================
 // --- ANA VERİ YAPISI ---
 // ============================================================================
@@ -51,9 +62,8 @@ typedef struct {
     // --- B. SENSÖRLER (Sensors) ---
     struct {
         EncoderData_t encoder;   // Encoder verileri burada
-        
+        MPUSensor_t mpu;         // MPU9250 verileri
         // İlerde eklenecekler:
-        // MPUSensor_t mpu;
         // BatterySensor_t battery;
     } sensors;
 
