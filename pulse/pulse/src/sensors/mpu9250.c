@@ -1,18 +1,19 @@
 // Core/Src/mpu9250.c
 #include "mpu9250.h"
+#include "shared_data.h" 
 #include <stdio.h>
 #include <string.h>
-
-// Global sistem durumu
-extern System_State_t g_system_state;
 
 // MPU9250 veri buffer'ı
 static MPU9250_Data_t mpu9250_data;
 static uint8_t mpu9250_data_ready = 0;
-static I2C_HandleTypeDef* mpu9250_hi2c = NULL;
+static I2C_HandleTypeDef* mpu9250_hi2c = NULL; // Sensörün bağlı olduğu I2C birimini (örn: I2C1) tutan değişken.
+// Başlangıçta NULL yapıyoruz ki Init çağrılmadan kullanılırsa hata verelim
 
 // DMA için buffer
 static uint8_t mpu9250_rx_buffer[14];
+// Verileri anlamlı hale getirmek için geçici yapı
+static MPU9250_Data_t raw_data;
 
 // -------------------------------------------------------------------
 // --- DÜŞÜK SEVİYE I2C FONKSİYONLARI ---
@@ -25,12 +26,6 @@ static HAL_StatusTypeDef MPU9250_WriteByte(uint8_t reg, uint8_t data)
                            I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 }
 
-// I2C'den multiple byte oku (DMA ile)
-static HAL_StatusTypeDef MPU9250_ReadBytes_DMA(uint8_t reg, uint8_t *data, uint16_t size)
-{
-    return HAL_I2C_Mem_Read_DMA(mpu9250_hi2c, MPU9250_I2C_ADDR, reg,
-                              I2C_MEMADD_SIZE_8BIT, data, size);
-}
 
 // I2C'den multiple byte oku (Blocking)
 static HAL_StatusTypeDef MPU9250_ReadBytes(uint8_t reg, uint8_t *data, uint16_t size)
@@ -44,7 +39,6 @@ static HAL_StatusTypeDef MPU9250_ReadBytes(uint8_t reg, uint8_t *data, uint16_t 
 // -------------------------------------------------------------------
 HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
 {
-    HAL_StatusTypeDef status;
     uint8_t whoami;
     
     if (hi2c == NULL) {
@@ -53,110 +47,105 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
     
     mpu9250_hi2c = hi2c;
     
-    printf("MPU9250: Baslatiliyor...\r\n");
+   // 2. Cihaz Kimlik Kontrolü (WHO_AM_I)
+    // Sensöre "Sen kimsin?" diye soruyoruz.
+    uint8_t whoami;
+    if (MPU9250_ReadBytes(MPU9250_WHO_AM_I, &whoami, 1) != HAL_OK) return HAL_ERROR;
     
-    // 1. WHO_AM_I kontrolü - Cihaz var mı?
-    status = MPU9250_ReadBytes(MPU9250_WHO_AM_I, &whoami, 1);
-    if (status != HAL_OK) {
-        printf("MPU9250: I2C hatasi! Cihaz yanit vermiyor.\r\n");
-        return status;
-    }
-    
-    if (whoami != MPU9250_WHO_AM_I_VALUE) {
-        printf("MPU9250: WHO_AM_I hatasi! Beklenen: 0x%02X, Alinan: 0x%02X\r\n", 
-               MPU9250_WHO_AM_I_VALUE, whoami);
-        return HAL_ERROR;
-    }
+    // Eğer cevap 0x71 (MPU9250 ID) değilse, yanlış sensör veya bozuk sensör demektir.
+    if (whoami != MPU9250_WHO_AM_I_VALUE) return HAL_ERROR;
     
     printf("MPU9250: Cihaz bulundu (WHO_AM_I: 0x%02X)\r\n", whoami);
     
-    // 2. Reset ve ayarlar
-    // Power Management 1 - Reset + Clock Source
-    status = MPU9250_WriteByte(MPU9250_PWR_MGMT_1, 0x80); // Device Reset
-    if (status != HAL_OK) return status;
-    HAL_Delay(100);
+   // 3. Sensörü Resetle (Fabrika Ayarlarına Dön)
+    // PWR_MGMT_1 register'ının 7. bitini 1 yaparsak reset atar.
+    MPU9250_WriteByte(MPU9250_PWR_MGMT_1, 0x80);
+    HAL_Delay(100); // Resetin tamamlanması için bekle
     
-    // Power Management 1 - Clock Source = PLL with X axis gyro reference
-    status = MPU9250_WriteByte(MPU9250_PWR_MGMT_1, 0x01);
-    if (status != HAL_OK) return status;
+   // 4. Saat Kaynağını Ayarla (Clock Source)
+    // Daha kararlı çalışması için PLL (Phase Locked Loop) seçiyoruz.
+    MPU9250_WriteByte(MPU9250_PWR_MGMT_1, 0x01);
     
-    // Configuration - DLPF_CFG = 3 (44Hz BW)
-    status = MPU9250_WriteByte(MPU9250_CONFIG, 0x03);
-    if (status != HAL_OK) return status;
+    // 5. İvmeölçer Ayarı (ACCEL CONFIG) - KRİTİK AYAR
+    // Register: 0x1C. Bit 3 ve 4 hassasiyeti belirler.
+    // 0x00 = ±2g  (Hassas ama çabuk doyuma ulaşır)
+    // 0x08 = ±4g  (Hyperloop kalkış/fren ivmesi için ideal)
+    // 0x10 = ±8g
+    // 0x18 = ±16g
+    MPU9250_WriteByte(MPU9250_ACCEL_CONFIG, 0x08); 
+
+    // 6. Jiroskop Ayarı (GYRO CONFIG)
+    // 0x00 = ±250 derece/saniye (Yeterli hassasiyet)
+    MPU9250_WriteByte(MPU9250_GYRO_CONFIG, 0x00);
     
-    // Gyro Configuration - FS_SEL = 0 (±250dps)
-    status = MPU9250_WriteByte(MPU9250_GYRO_CONFIG, 0x00);
-    if (status != HAL_OK) return status;
-    
-    // Accelerometer Configuration - AFS_SEL = 0 (±2g)
-    status = MPU9250_WriteByte(MPU9250_ACCEL_CONFIG, 0x00);
-    if (status != HAL_OK) return status;
-    
-    // Accelerometer Configuration 2 - A_DLPF_CFG = 3 (44Hz BW)
-    status = MPU9250_WriteByte(MPU9250_ACCEL_CONFIG2, 0x03);
-    if (status != HAL_OK) return status;
-    
-    // Sample Rate Divider - 1kHz/(1+7) = 125Hz
-    status = MPU9250_WriteByte(MPU9250_SMPLRT_DIV, 0x07);
-    if (status != HAL_OK) return status;
-    
-    // Interrupt Enable - Data Ready Enable
-    status = MPU9250_WriteByte(MPU9250_INT_ENABLE, 0x01);
-    if (status != HAL_OK) return status;
-    
-    // User Control - I2C Master Enable disable, FIFO disable
-    status = MPU9250_WriteByte(MPU9250_USER_CTRL, 0x00);
-    if (status != HAL_OK) return status;
-    
-    // Veri yapısını sıfırla
-    memset(&mpu9250_data, 0, sizeof(MPU9250_Data_t));
-    mpu9250_data_ready = 0;
-    
-    printf("MPU9250: Basarili sekilde baslatildi\r\n");
+    // 7. Kesme (Interrupt) Ayarları
+    // Veri hazır olduğunda INT pini aktif olsun mu? Evet.
+    MPU9250_WriteByte(MPU9250_INT_ENABLE, 0x01);
+
+    // Başarılı
     return HAL_OK;
 }
 
-// -------------------------------------------------------------------
-// --- MPU9250 OKUMA TETİKLEME (DMA) ---
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// VERİ OKUMA TETİKLEYİCİSİ (Non-Blocking / DMA)
+// -----------------------------------------------------------------------------
+/**
+ * @brief Bu fonksiyon `main` döngüsü içinde periyodik olarak (örn: 10ms) çağrılmalıdır.
+ * İşlemciyi durdurmadan (DMA ile) veri okumayı başlatır.
+ */
 HAL_StatusTypeDef MPU9250_Trigger_Read(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c == NULL || mpu9250_hi2c == NULL) {
-        return HAL_ERROR;
-    }
+    if (hi2c == NULL) return HAL_ERROR;
     
-    // DMA ile 14 byte oku (ACCEL_XOUT_H'den başlayarak)
-    return MPU9250_ReadBytes_DMA(MPU9250_ACCEL_XOUT_H, mpu9250_rx_buffer, 14);
+    // MPU9250_ACCEL_XOUT_H (0x3B) adresinden başlayarak 14 byte oku.
+    // Bu işlem arka planda başlar. Bittiğinde Callback fonksiyonu çağrılır.
+    return HAL_I2C_Mem_Read_DMA(hi2c, MPU9250_I2C_ADDR, MPU9250_ACCEL_XOUT_H, 
+                                I2C_MEMADD_SIZE_8BIT, mpu9250_rx_buffer, 14);
 }
-
-// -------------------------------------------------------------------
-// --- DMA OKUMA TAMAMLANDI CALLBACK ---
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// DMA İŞLEMİ BİTTİĞİNDE ÇALIŞAN FONKSİYON (Callback)
+// -----------------------------------------------------------------------------
+/**
+ * @note  Bu fonksiyonu `main.c` içindeki `HAL_I2C_MemRxCpltCallback` içinden çağırmalısın!
+ */
 void MPU9250_Read_DMA_Complete_Callback(void)
 {
-    // DMA transferi tamamlandı, veriyi işle
+    // --- 1. Adım: Veri Birleştirme (Parsing) ---
+    // Sensör verileri 16-bittir ama I2C 8-bit taşır.
+    // Yüksek (High) ve Düşük (Low) byte'ları birleştiriyoruz.
+    // Örn: High=0x12, Low=0x34 -> Sonuç=0x1234
     
-    // Raw verileri 16-bit değerlere çevir
-    mpu9250_data.accel_x = (int16_t)((mpu9250_rx_buffer[0] << 8) | mpu9250_rx_buffer[1]);
-    mpu9250_data.accel_y = (int16_t)((mpu9250_rx_buffer[2] << 8) | mpu9250_rx_buffer[3]);
-    mpu9250_data.accel_z = (int16_t)((mpu9250_rx_buffer[4] << 8) | mpu9250_rx_buffer[5]);
-    mpu9250_data.temp    = (int16_t)((mpu9250_rx_buffer[6] << 8) | mpu9250_rx_buffer[7]);
-    mpu9250_data.gyro_x  = (int16_t)((mpu9250_rx_buffer[8] << 8) | mpu9250_rx_buffer[9]);
-    mpu9250_data.gyro_y  = (int16_t)((mpu9250_rx_buffer[10] << 8) | mpu9250_rx_buffer[11]);
-    mpu9250_data.gyro_z  = (int16_t)((mpu9250_rx_buffer[12] << 8) | mpu9250_rx_buffer[13]);
+    // İvme (Accelerometer)
+    raw_data.accel_x = (int16_t)((mpu9250_rx_buffer[0] << 8) | mpu9250_rx_buffer[1]);
+    raw_data.accel_y = (int16_t)((mpu9250_rx_buffer[2] << 8) | mpu9250_rx_buffer[3]);
+    raw_data.accel_z = (int16_t)((mpu9250_rx_buffer[4] << 8) | mpu9250_rx_buffer[5]);
     
-    mpu9250_data.timestamp = HAL_GetTick();
-    mpu9250_data_ready = 1;
+    // Sıcaklık (Temperature)
+    raw_data.temp    = (int16_t)((mpu9250_rx_buffer[6] << 8) | mpu9250_rx_buffer[7]);
     
-    // Global sisteme yaz
-    g_system_state.acceleration_mss = (float)mpu9250_data.accel_x / MPU9250_ACCEL_SCALE;
-    
-    // Debug
-    // printf("MPU: ax=%d, ay=%d, az=%d, gx=%d, gy=%d, gz=%d\r\n",
-    //        mpu9250_data.accel_x, mpu9250_data.accel_y, mpu9250_data.accel_z,
-    //        mpu9250_data.gyro_x, mpu9250_data.gyro_y, mpu9250_data.gyro_z);
-}
+    // Jiroskop (Gyroscope)
+    raw_data.gyro_x  = (int16_t)((mpu9250_rx_buffer[8] << 8) | mpu9250_rx_buffer[9]);
+    raw_data.gyro_y  = (int16_t)((mpu9250_rx_buffer[10] << 8) | mpu9250_rx_buffer[11]);
+    raw_data.gyro_z  = (int16_t)((mpu9250_rx_buffer[12] << 8) | mpu9250_rx_buffer[13]);
 
+
+    // --- 2. Adım: Fiziksel Çevrim ve Shared Data Yazma ---
+    
+    // İvme Hesabı: (Ham Veri / Scale) * 9.81
+    // Sonuç m/s^2 cinsinden olur.
+    shared_data.sensors.mpu.accel_x_mss = ((float)raw_data.accel_x / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
+    shared_data.sensors.mpu.accel_y_mss = ((float)raw_data.accel_y / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
+    shared_data.sensors.mpu.accel_z_mss = ((float)raw_data.accel_z / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
+
+    // Gyro Hesabı: Ham Veri / Scale
+    // Sonuç derece/saniye cinsinden olur.
+    shared_data.sensors.mpu.gyro_x_dps = (float)raw_data.gyro_x / MPU9250_GYRO_SCALE_250;
+    shared_data.sensors.mpu.gyro_y_dps = (float)raw_data.gyro_y / MPU9250_GYRO_SCALE_250;
+    shared_data.sensors.mpu.gyro_z_dps = (float)raw_data.gyro_z / MPU9250_GYRO_SCALE_250;
+
+    // Sıcaklık Hesabı: Datasheet formülü
+    shared_data.sensors.mpu.temp_c = ((float)raw_data.temp - 0) / 333.87f + 21.0f;
+}
 // -------------------------------------------------------------------
 // --- VERİ HAZIR MI KONTROLÜ ---
 // -------------------------------------------------------------------
