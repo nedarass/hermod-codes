@@ -12,8 +12,7 @@ extern "C" {
 
 // Brake GPIO Tanımları
 // bunlara gerek yok SİLLLL
-#define BRAKE_GPIO_PORT   GPIOC
-#define BRAKE_PIN         GPIO_PIN_1
+
 
 // Fren Durumları
 typedef enum {
