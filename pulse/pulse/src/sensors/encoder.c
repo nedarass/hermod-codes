@@ -1,5 +1,4 @@
 //HAL_TIM_Encoder_Start, __HAL_TIM_GET_COUNTER: Bunlar STM32 ile birlikte gelir.
-// Core/Src/encoder.c
 
 #include "encoder.h"
 #include "shared_data.h"
@@ -10,18 +9,9 @@ extern System_State_t g_system_state;
 
 // --- AYARLANABİLİR SABİTLER ---
 // Bu değerleri kullandığın donanıma (Encoder ve Tekerlek) göre değiştirmelisin!
-
-// Encoder'ın bir tam turu için ürettiği toplam sayım (Pulse/Rev)
-// Örn: 1024 PPR bir encoder, Quadrature modunda (x4) 4096 sayım üretir.
-#define ENCODER_COUNTS_PER_REV  4096.0f 
-
-// Tekerleğin çevresi (Metre cinsinden)
-// Çap * PI sayısı
-#define WHEEL_CIRCUMFERENCE_M   0.5f    
-
-// Hız hesaplaması için bu fonksiyonun ne sıklıkla çağrıldığı (Saniye)
-// control.c içinde 10ms'de bir çağırıyorsan: 0.01f
-#define UPDATE_PERIOD_SEC       0.01f   
+#define ENCODER_COUNTS_PER_REV  4096.0f // Encoder'ın bir tam turu için ürettiği toplam sayım (Pulse/Rev)
+#define WHEEL_CIRCUMFERENCE_M   0.5f    // Tekerleğin çevresi (Metre cinsinden)
+#define UPDATE_PERIOD_SEC       0.01f   // Hız hesaplaması için bu fonksiyonun ne sıklıkla çağrıldığı (Saniye)
 
 // --- DEĞİŞKENLER ---
 static int32_t last_counter_value = 0;    // Bir önceki okumadaki sayaç değeri
@@ -33,7 +23,6 @@ static int64_t total_pulse_count = 0;     // Toplam katedilen mesafe (pulse cins
 void ENCODER_Init(TIM_HandleTypeDef *htim)
 {
     // Timer'ı Encoder modunda başlat
-    // TIM_CHANNEL_ALL: Hem A hem B kanalını saymak için (x4 modu genelde)
     if (HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL) != HAL_OK)
     {
         // Başlatma hatası olursa hata bayrağı dikilebilir
@@ -54,9 +43,6 @@ void ENCODER_Update(TIM_HandleTypeDef *htim)
     uint32_t current_counter_value = __HAL_TIM_GET_COUNTER(htim);
 
     // 2. Değişimi (Delta) Hesapla
-    // STM32 Timer'ları (genelde 16-bit) belirli bir değerden sonra sıfıra döner (Overflow).
-    // (int16_t) casting işlemi bu taşmayı (wrap-around) otomatik olarak doğru hesaplar.
-    // Örn: Sayaç 65535'ten 5'e geçtiyse, fark +6 olarak doğru hesaplanır.
     int16_t delta_counts = (int16_t)(current_counter_value - (uint32_t)last_counter_value);
 
     // 3. Toplam Mesafeyi Güncelle (Absolute Position)
