@@ -1,12 +1,7 @@
-// Core/Src/navigation.c
-
 #include "navigation.h"
 #include "shared_data.h"
 #include <stdio.h>
 #include <math.h>
-
-// Global sistem durum yapısı
-extern System_State_t g_system_state;
 
 // --- KALMAN FİLTRESİ PARAMETRELERİ (AYARLANABİLİR) ---
 
