@@ -25,7 +25,6 @@ typedef struct {
 // Fonksiyon Prototipleri
 void OPTICS_Init(void);
 void OPTICS_Update(void);
-void OPTICS_EXTI_Callback(uint16_t GPIO_Pin);
 
 // Callback: main.c içindeki HAL_GPIO_EXTI_Callback'ten çağrılmalı
 void OPTICS_EXTI_Callback(uint16_t GPIO_Pin);
