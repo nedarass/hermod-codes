@@ -19,14 +19,14 @@ extern "C" {
 // ============================================================================
 // --- HATA BAYRAKLARI (Bitmask Macros) ---
 // ============================================================================
-// Bu bitler system.error_flags değişkeni içinde set edilecek.
+// mpu9250.c ile uyumlu olması için isimleri kısalttım:
 #define ERR_NONE              0
-#define ERR_ENCODER_INIT      (1 << 0) // 0000 0001
-#define ERR_MPU_FAIL          (1 << 1) // 0000 0010
-#define ERR_NTC_OOR           (1 << 2) // 0000 0100 (Out of Range)
-#define ERR_COMM_TIMEOUT      (1 << 3) // 0000 1000
-#define ERR_POWER_TRIP        (1 << 4) // 0001 0000
-#define ERR_HEALTH_CRITICAL   (1 << 5) // Kritik Sağlık Sorunu
+#define ERR_ENCODER_INIT      (1 << 0) 
+#define ERR_MPU_FAIL          (1 << 1) // Artık mpu9250.c hatası ile uyumlu
+#define ERR_NTC_OOR           (1 << 2) 
+#define ERR_COMM_TIMEOUT      (1 << 3) 
+#define ERR_POWER_TRIP        (1 << 4) 
+#define ERR_HEALTH_CRITICAL   (1 << 5) 
 
 // ============================================================================
 // --- ALT YAPILAR (Sub-Structs) ---
@@ -36,15 +36,15 @@ extern "C" {
 typedef struct {
     float velocity_mps;      // Anlık Hız (m/s)
     float position_m;        // Konum (m)
-    int64_t total_pulse;     // Toplam Pulse Sayısı (Debug için)
+    int64_t total_pulse;     // Toplam Pulse Sayısı
 } EncoderData_t;
 
 // 2. VESC MOTOR SÜRÜCÜ VERİLERİ 
 typedef struct {
-    int32_t rpm;             // Motor Devri
-    int32_t current;         // Motor Akımı 
-    float voltage;           // Giriş Voltajı
-    float temperature;       // Motor/Sürücü Sıcaklığı
+    int32_t rpm;             
+    int32_t current;         
+    float voltage;           
+    float temperature;       
 } VESC_Data_t;
 
 // 3. MPU9250 IMU SENSÖR VERİLERİ 
@@ -74,7 +74,7 @@ typedef struct {
 
 // 6. OPTİK SENSÖRLER 
 typedef struct {
-    uint8_t obstacle_detected; // 0: Yok, 1: VAR 
+    uint8_t obstacle_detected; 
     uint8_t raw_sensor_1;      
     uint8_t raw_sensor_2;      
 } OpticsData_t;
@@ -87,10 +87,10 @@ typedef struct {
     
     // --- A. SİSTEM GENEL DURUMU (System) ---
     struct {
-        bool emergency_mode;     // ACİL DURUM MODU (True: Sistem Kilitli)
-        uint32_t error_flags;    // Hata Bayrakları (Yukarıdaki makrolar buraya yazılır)
-        uint32_t run_time_ms;    // Sistem çalışma süresi
-        uint32_t health_status;  // Ekstra sağlık durumu (Opsiyonel)
+        bool emergency_mode;     
+        uint32_t error_flags;    
+        uint32_t run_time_ms;    
+        uint32_t health_status;  
     } system;
 
     // --- B. SENSÖRLER (Sensors) ---
