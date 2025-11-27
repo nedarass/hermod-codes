@@ -7,7 +7,7 @@
 
 // Q: Sistemin (İvme/Fizik Modelinin) Güvensizliği
 // Bu değer artarsa filtre, Encoder ölçümüne daha çok güvenir.
-#define KF_Q_ACCEL  0.001f 
+#define KF_Q_ACCEL  0.005f 
 
 // R: Ölçümün (Encoder'ın) Gürültüsü
 // Bu değer artarsa filtre, İvme integraline (tahmine) daha çok güvenir.
@@ -39,34 +39,40 @@ void NAVIGATION_Init(void)
     nav_state.P[1][0] = 0.0f;
     nav_state.P[1][1] = 1.0f;
 
-    printf("Navigasyon Sistemi (Kalman) Baslatildi.\r\n");
+    // Shared Data temizliği
+    shared_data.sensors.nav.position_m = 0.0f;
+    shared_data.sensors.nav.velocity_mps = 0.0f;
 }
 
-
+// Bu fonksiyon main loop içinde dt süresiyle (örn: 0.01sn) çağrılmalı
 void NAVIGATION_Update(float dt)
 {
     // ============================================================
     // 1. GİRDİLERİ AL
     // ============================================================
-    float input_accel = g_system_state.acceleration_mss; 
-    float measured_velocity = g_system_state.velocity_mps; 
-
+    // İvme Kaynağı: MPU9250 X Ekseni (Podun gidiş yönü)
+    float input_accel = shared_data.sensors.mpu.accel_x_mss;
+    
+    // Hız Kaynağı: Encoder (Filtrelenmiş veya Ham kullanılabilir)
+    float measured_velocity = shared_data.sensors.encoder.velocity_mps;
     // ============================================================
-    // 2. TAHMİN (PREDICTION) - Fizik Modeli
+    // 2. TAHMİN (PREDICTION- TIME UPDATE) - Fizik Modeli
     // ============================================================
     // İvme hatasını (bias) çıkararak saf ivmeyi bul
     float accel_net = input_accel - nav_state.bias_accel;
     
-    // Fizik formülleri: x = x + v*t + 0.5*a*t^2
-    nav_state.position_m   += nav_state.velocity_mps * dt + 0.5f * accel_net * dt * dt;
-    nav_state.velocity_mps += accel_net * dt;
+    // Konum Tahmini: x = x + v*t + 0.5*a*t^2
+    nav_state.position_m += (nav_state.velocity_mps * dt) + (0.5f * accel_net * dt * dt);
 
+    // Hız Tahmini: v = v + a*t
+    nav_state.velocity_mps += accel_net * dt;
+    
     // Hata matrisini (P) büyüt (Zaman geçtikçe belirsizlik artar)
-    nav_state.P[0][0] += KF_Q_ACCEL; 
-    nav_state.P[1][1] += KF_Q_ACCEL;
+    nav_state.P[0][0] += KF_Q_ACCEL * dt; 
+    nav_state.P[1][1] += KF_Q_ACCEL * dt;
 
     // ============================================================
-    // 3. DÜZELTME (CORRECTION) - Encoder ile
+    // 3. DÜZELTME (CORRECTION - MEASUREMENT UPDATE) - Encoder ile
     // ============================================================
     
     // Fark: Encoder hızı ile bizim tahmin ettiğimiz hız arasındaki fark
@@ -84,14 +90,18 @@ void NAVIGATION_Update(float dt)
     // Not: Bias'ı yavaşça öğrenir (0.01 katsayısı ile)
     nav_state.bias_accel += 0.01f * K_gain * velocity_error; 
     
-    // Hata matrisini (P) küçült (Ölçüm geldiği için belirsizlik azaldı)
+    // KOVARYANS GÜNCELLEME (Ölçüm geldiği için belirsizlik azaldı)
     nav_state.P[1][1] = (1.0f - K_gain) * nav_state.P[1][1];
 
 
+   // ============================================================
+    // 4. SONUÇLARI YAZ (Shared Data'ya)
     // ============================================================
-    // 4. ÇIKTILARI YAZ
-    // ============================================================
-    g_system_state.position_m = nav_state.position_m;
-    // Filtrelenmiş "akıllı" hız değerini yazıyoruz:
-    g_system_state.velocity_mps = nav_state.velocity_mps; 
+    
+    // Artık "encoder hızı" değil, "Füzyon Hızı"nı sisteme sunuyoruz.
+    // Fren ve Motor algoritmaları ARTIK BU VERİYİ KULLANMALI!
+    
+    shared_data.sensors.nav.position_m     = nav_state.position_m;
+    shared_data.sensors.nav.velocity_mps   = nav_state.velocity_mps;
+    shared_data.sensors.nav.accel_bias_mss = nav_state.bias_accel;
 }
