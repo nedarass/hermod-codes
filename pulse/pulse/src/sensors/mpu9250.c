@@ -49,7 +49,6 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
     
    // 2. Cihaz Kimlik Kontrolü (WHO_AM_I)
     // Sensöre "Sen kimsin?" diye soruyoruz.
-    uint8_t whoami;
     if (MPU9250_ReadBytes(MPU9250_WHO_AM_I, &whoami, 1) != HAL_OK) return HAL_ERROR;
     
     // Eğer cevap 0x71 (MPU9250 ID) değilse, yanlış sensör veya bozuk sensör demektir.
@@ -133,15 +132,15 @@ void MPU9250_Read_DMA_Complete_Callback(void)
     
     // İvme Hesabı: (Ham Veri / Scale) * 9.81
     // Sonuç m/s^2 cinsinden olur.
-    shared_data.sensors.mpu.accel_x_mss = ((float)raw_data.accel_x / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
-    shared_data.sensors.mpu.accel_y_mss = ((float)raw_data.accel_y / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
-    shared_data.sensors.mpu.accel_z_mss = ((float)raw_data.accel_z / MPU9250_ACCEL_SCALE_4G) * GRAVITY_MSS;
+    shared_data.sensors.mpu.accel_x_mss = ((float)raw_data.accel_x / MPU9250_ACCEL_SCALE) * GRAVITY_MSS;
+    shared_data.sensors.mpu.accel_y_mss = ((float)raw_data.accel_y / MPU9250_ACCEL_SCALE) * GRAVITY_MSS;
+    shared_data.sensors.mpu.accel_z_mss = ((float)raw_data.accel_z / MPU9250_ACCEL_SCALE) * GRAVITY_MSS;
 
     // Gyro Hesabı: Ham Veri / Scale
     // Sonuç derece/saniye cinsinden olur.
-    shared_data.sensors.mpu.gyro_x_dps = (float)raw_data.gyro_x / MPU9250_GYRO_SCALE_250;
-    shared_data.sensors.mpu.gyro_y_dps = (float)raw_data.gyro_y / MPU9250_GYRO_SCALE_250;
-    shared_data.sensors.mpu.gyro_z_dps = (float)raw_data.gyro_z / MPU9250_GYRO_SCALE_250;
+    shared_data.sensors.mpu.gyro_x_dps = (float)raw_data.gyro_x / MPU9250_GYRO_SCALE;
+    shared_data.sensors.mpu.gyro_y_dps = (float)raw_data.gyro_y / MPU9250_GYRO_SCALE;
+    shared_data.sensors.mpu.gyro_z_dps = (float)raw_data.gyro_z / MPU9250_GYRO_SCALE;
 
     // Sıcaklık Hesabı: Datasheet formülü
     shared_data.sensors.mpu.temp_c = ((float)raw_data.temp - 0) / 333.87f + 21.0f;
