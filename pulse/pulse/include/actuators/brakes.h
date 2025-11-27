@@ -43,6 +43,9 @@ bool BRAKES_IsEngaged(void);
 
 BrakeError_t BRAKES_GetLastError(void);
 
+// Fren hatasını manuel olarak temizler 
+void BRAKES_ClearError(void);
+
 #ifdef __cplusplus
 }
 #endif
