@@ -60,6 +60,14 @@ typedef struct {
     int16_t current_ma;      // Batarya Akımı (mA)
     float ntc_temp_c;        // NTC Sıcaklığı (Celsius)
 } BatteryData_t;
+
+// 6. OPTİK SENSÖRLER (sensors/optics.c için)
+typedef struct {
+    uint8_t obstacle_detected; // 0: Yok, 1: VAR (Acil Durum)
+    uint8_t raw_sensor_1;      // Sol Sensör Durumu
+    uint8_t raw_sensor_2;      // Sağ Sensör Durumu
+} OpticsData_t;
+
 // ============================================================================
 // --- ANA VERİ YAPISI ---
 // ============================================================================
@@ -79,6 +87,7 @@ typedef struct {
         MPUSensor_t mpu;         // MPU9250 verileri
         NavigationData_t nav;
         BatteryData_t battery;
+        OpticsData_t optics;
     } sensors;
 
     // --- C. AKTÜATÖRLER (Actuators) ---
