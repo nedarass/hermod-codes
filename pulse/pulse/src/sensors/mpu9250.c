@@ -10,10 +10,15 @@ static uint8_t mpu9250_data_ready = 0;
 static I2C_HandleTypeDef* mpu9250_hi2c = NULL; // Sensörün bağlı olduğu I2C birimini (örn: I2C1) tutan değişken.
 // Başlangıçta NULL yapıyoruz ki Init çağrılmadan kullanılırsa hata verelim
 
-// DMA için buffer
-static uint8_t mpu9250_rx_buffer[14];
+// DMA için buffer (Güvenlik için 'volatile' eklendi)
+static volatile uint8_t mpu9250_rx_buffer[14];
+
 // Verileri anlamlı hale getirmek için geçici yapı
 static MPU9250_Data_t raw_data;
+
+// DMA Kontrol Bayrakları 
+// (Güvenlik için 'volatile' eklendi. İşlemci optimizasyon yapmasın diye.)
+static volatile uint8_t mpu9250_dma_busy = 0; // 1: Şu an okuma yapıyor, 0: Boşta
 
 // -------------------------------------------------------------------
 // --- DÜŞÜK SEVİYE I2C FONKSİYONLARI ---
@@ -23,7 +28,7 @@ static MPU9250_Data_t raw_data;
 static HAL_StatusTypeDef MPU9250_WriteByte(uint8_t reg, uint8_t data)
 {
     return HAL_I2C_Mem_Write(mpu9250_hi2c, MPU9250_I2C_ADDR, reg, 
-                           I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
+                            I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 }
 
 
@@ -31,7 +36,7 @@ static HAL_StatusTypeDef MPU9250_WriteByte(uint8_t reg, uint8_t data)
 static HAL_StatusTypeDef MPU9250_ReadBytes(uint8_t reg, uint8_t *data, uint16_t size)
 {
     return HAL_I2C_Mem_Read(mpu9250_hi2c, MPU9250_I2C_ADDR, reg,
-                          I2C_MEMADD_SIZE_8BIT, data, size, 100);
+                           I2C_MEMADD_SIZE_8BIT, data, size, 100);
 }
 
 // -------------------------------------------------------------------
@@ -42,6 +47,7 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
     uint8_t whoami;
     
     if (hi2c == NULL) {
+        shared_data.system.error_flags |= ERR_MPU_FAIL; // Hata bayrağı eklendi
         return HAL_ERROR;
     }
     
@@ -49,10 +55,16 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
     
    // 2. Cihaz Kimlik Kontrolü (WHO_AM_I)
     // Sensöre "Sen kimsin?" diye soruyoruz.
-    if (MPU9250_ReadBytes(MPU9250_WHO_AM_I, &whoami, 1) != HAL_OK) return HAL_ERROR;
+    if (MPU9250_ReadBytes(MPU9250_WHO_AM_I, &whoami, 1) != HAL_OK) {
+        shared_data.system.error_flags |= ERR_MPU_FAIL; // İletişim hatası
+        return HAL_ERROR;
+    }
     
     // Eğer cevap 0x71 (MPU9250 ID) değilse, yanlış sensör veya bozuk sensör demektir.
-    if (whoami != MPU9250_WHO_AM_I_VALUE) return HAL_ERROR;
+    if (whoami != MPU9250_WHO_AM_I_VALUE) {
+        shared_data.system.error_flags |= ERR_MPU_FAIL; // Yanlış Cihaz
+        return HAL_ERROR;
+    }
     
     printf("MPU9250: Cihaz bulundu (WHO_AM_I: 0x%02X)\r\n", whoami);
     
@@ -81,7 +93,7 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
     // Veri hazır olduğunda INT pini aktif olsun mu? Evet.
     MPU9250_WriteByte(MPU9250_INT_ENABLE, 0x01);
 
-    // Başarılı
+    // Başarılı - Hata bayrağı yok
     return HAL_OK;
 }
 
@@ -95,12 +107,22 @@ HAL_StatusTypeDef MPU9250_Init(I2C_HandleTypeDef *hi2c)
 HAL_StatusTypeDef MPU9250_Trigger_Read(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c == NULL) return HAL_ERROR;
+
+    // --- GÜVENLİK KİLİDİ ---
+    // Eğer DMA hala önceki veriyi okuyorsa, yeni emir verme!
+    if (mpu9250_dma_busy == 1) {
+        return HAL_BUSY; // Meşgul hatası dön
+    }
     
+    // Kilidi kapat (Meşgul yap)
+    mpu9250_dma_busy = 1;
+
     // MPU9250_ACCEL_XOUT_H (0x3B) adresinden başlayarak 14 byte oku.
     // Bu işlem arka planda başlar. Bittiğinde Callback fonksiyonu çağrılır.
     return HAL_I2C_Mem_Read_DMA(hi2c, MPU9250_I2C_ADDR, MPU9250_ACCEL_XOUT_H, 
-                                I2C_MEMADD_SIZE_8BIT, mpu9250_rx_buffer, 14);
+                                I2C_MEMADD_SIZE_8BIT, (uint8_t*)mpu9250_rx_buffer, 14);
 }
+
 // -----------------------------------------------------------------------------
 // DMA İŞLEMİ BİTTİĞİNDE ÇALIŞAN FONKSİYON (Callback)
 // -----------------------------------------------------------------------------
@@ -144,4 +166,8 @@ void MPU9250_Read_DMA_Complete_Callback(void)
 
     // Sıcaklık Hesabı: Datasheet formülü
     shared_data.sensors.mpu.temp_c = ((float)raw_data.temp - 0) / 333.87f + 21.0f;
+    
+    // --- GÜVENLİK KİLİDİNİ KALDIR ---
+    // Okuma bitti, veriler işlendi. Artık yeni okuma yapılabilir.
+    mpu9250_dma_busy = 0; 
 }
