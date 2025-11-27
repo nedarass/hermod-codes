@@ -108,6 +108,7 @@ extern "C" {
 // Ölçek Faktörleri
 #define MPU9250_ACCEL_SCALE      16384.0f  // ±2g için
 #define MPU9250_GYRO_SCALE       131.0f    // ±250dps için
+#define GRAVITY_MSS 9.81f
 #define MPU9250_TEMP_SCALE       333.87f
 #define MPU9250_TEMP_OFFSET      21.0f
 
