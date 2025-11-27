@@ -14,10 +14,10 @@
     #define OPTIC_2_Pin       GPIO_PIN_1
 #endif
 
-// Omron Sensörleri
+// Omron Sensörleri - AYNI pinleri kullan:
 static Omron_Sensor_t omron_sensors[2] = {
-    {OMRON_SENSOR_1_PORT, OMRON_SENSOR_1_PIN, OMRON_NO_OBSTACLE, 0, 1},
-    {OMRON_SENSOR_2_PORT, OMRON_SENSOR_2_PIN, OMRON_NO_OBSTACLE, 0, 2}
+    {OPTIC_1_GPIO_Port, OPTIC_1_Pin, OMRON_NO_OBSTACLE, 0, 1}, 
+    {OPTIC_2_GPIO_Port, OPTIC_2_Pin, OMRON_NO_OBSTACLE, 0, 2}   
 };
 
 // Acil durum flag'i - SADECE control.c bunu okuyup karar verecek
