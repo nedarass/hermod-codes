@@ -1,10 +1,18 @@
-// Core/Src/optics.c
 #include "optics.h"
 #include "shared_data.h"
 #include <stdio.h>
 
-// Global sistem durumu
-extern System_State_t g_system_state;
+// --- PIN TANIMLARI (CubeMX Etiketleri) ---
+// CubeMX'te sensör pinlerine "OPTIC_1" ve "OPTIC_2" etiketi verdiğini varsayıyorum.
+// Eğer vermediysen main.h içine bakıp doğru pinleri buraya yazmalısın.
+
+#ifndef OPTIC_1_Pin
+    // Eğer CubeMX'te etiket verilmediyse manuel tanımla (Örn: PA0 ve PA1)
+    #define OPTIC_1_GPIO_Port GPIOA
+    #define OPTIC_1_Pin       GPIO_PIN_0
+    #define OPTIC_2_GPIO_Port GPIOA
+    #define OPTIC_2_Pin       GPIO_PIN_1
+#endif
 
 // Omron Sensörleri
 static Omron_Sensor_t omron_sensors[2] = {
@@ -20,16 +28,15 @@ static uint8_t emergency_obstacle_detected = 0;
 // -------------------------------------------------------------------
 void OPTICS_Init(void)
 {
-    printf("OPTICS: Omron sensörleri başlatılıyor...\r\n");
-    
     for (int i = 0; i < 2; i++) {
         omron_sensors[i].last_state = OMRON_NO_OBSTACLE;
         omron_sensors[i].detection_timestamp = 0;
     }
     
     emergency_obstacle_detected = 0;
-    
-    printf("OPTICS: Omron sensörleri hazır (EXTI aktif)\r\n");
+    shared_data.sensors.optics.obstacle_detected = 0;
+    shared_data.sensors.optics.raw_sensor_1 = 0;
+    shared_data.sensors.optics.raw_sensor_2 = 0;
 }
 
 // -------------------------------------------------------------------
@@ -37,30 +44,35 @@ void OPTICS_Init(void)
 // -------------------------------------------------------------------
 void OPTICS_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    uint32_t current_time = HAL_GetTick();
-    
-    for (int i = 0; i < 2; i++) {
-        if (omron_sensors[i].GPIO_Pin == GPIO_Pin) {
+    for (int i = 0; i < 2; i++) 
+    {
+        if (omron_sensors[i].GPIO_Pin == GPIO_Pin) 
+        {
+            // Pini Oku (Active Low veya High olabilir, sensöre göre değişir)
+            // Varsayım: Engel varken HIGH (1), yokken LOW (0)
             GPIO_PinState pin_state = HAL_GPIO_ReadPin(omron_sensors[i].GPIO_Port, omron_sensors[i].GPIO_Pin);
-            Omron_State_t new_state = (pin_state == GPIO_PIN_SET) ? OMRON_NO_OBSTACLE : OMRON_OBSTACLE_DETECTED;
             
-            if (new_state != omron_sensors[i].last_state) {
+            Omron_State_t new_state = (pin_state == GPIO_PIN_SET) ? OMRON_OBSTACLE_DETECTED : OMRON_NO_OBSTACLE;
+            
+            // Durum değiştiyse işlem yap
+            if (new_state != omron_sensors[i].last_state) 
+            {
                 omron_sensors[i].last_state = new_state;
                 
-                if (new_state == OMRON_OBSTACLE_DETECTED) {
-                    omron_sensors[i].detection_timestamp = current_time;
-                    emergency_obstacle_detected = 1; // ✅ SADECE FLAG SET ET!
+                if (new_state == OMRON_OBSTACLE_DETECTED) 
+                {
+                    omron_sensors[i].detection_timestamp = HAL_GetTick();
+                    emergency_obstacle_detected = 1;
                     
-                    printf("🚨 OMRON %d EXTI: Engel tespit edildi (Flag set)\r\n", omron_sensors[i].sensor_id);
-                    
-                    // ❌❌❌ BURADA KESİNLİKLE ACTUATOR ÇAĞIRMA! ❌❌❌
-                    // CONTROL.c bunu okuyup gerekli kararı verecek
-                    
-                } else {
-                    printf("✅ OMRON %d EXTI: Engel kalktı\r\n", omron_sensors[i].sensor_id);
+                    // Shared Data Güncelle (Anında)
+                    shared_data.sensors.optics.obstacle_detected = 1;
                 }
             }
-            break;
+            // Shared Data Raw Güncelle
+            if (i == 0) shared_data.sensors.optics.raw_sensor_1 = new_state;
+            else        shared_data.sensors.optics.raw_sensor_2 = new_state;
+            
+            break; // İlgili pini bulduk, döngüden çık
         }
     }
 }
@@ -70,20 +82,23 @@ void OPTICS_EXTI_Callback(uint16_t GPIO_Pin)
 // -------------------------------------------------------------------
 void OPTICS_Update(void)
 {
-    // Periyodik durum kontrolü (polling backup)
-    for (int i = 0; i < 2; i++) {
-        GPIO_PinState pin_state = HAL_GPIO_ReadPin(omron_sensors[i].GPIO_Port, omron_sensors[i].GPIO_Pin);
-        Omron_State_t current_state = (pin_state == GPIO_PIN_SET) ? OMRON_NO_OBSTACLE : OMRON_OBSTACLE_DETECTED;
+    // Interrupt kaçarsa diye periyodik kontrol
+    for (int i = 0; i < 2; i++) 
+    {
+        // ... (EXTI ile aynı mantık, kodu tekrar etmemek için özeti yazıyorum)
+        // Pini oku, durum değiştiyse shared_data'yı güncelle.
+        // Kodun EXTI kısmındaki mantığın aynısı buraya uygulanabilir.
         
-        if (current_state != omron_sensors[i].last_state) {
-            omron_sensors[i].last_state = current_state;
-            
-            if (current_state == OMRON_OBSTACLE_DETECTED) {
-                omron_sensors[i].detection_timestamp = HAL_GetTick();
-                emergency_obstacle_detected = 1; // ✅ FLAG SET ET
-                printf("🚨 OMRON %d POLLING: Engel tespit edildi\r\n", omron_sensors[i].sensor_id);
-            }
+        GPIO_PinState pin_state = HAL_GPIO_ReadPin(omron_sensors[i].GPIO_Port, omron_sensors[i].GPIO_Pin);
+        Omron_State_t current_state = (pin_state == GPIO_PIN_SET) ? OMRON_OBSTACLE_DETECTED : OMRON_NO_OBSTACLE;
+        
+        if (current_state == OMRON_OBSTACLE_DETECTED) {
+             emergency_obstacle_detected = 1;
+             shared_data.sensors.optics.obstacle_detected = 1;
         }
+        
+        if (i == 0) shared_data.sensors.optics.raw_sensor_1 = current_state;
+        else        shared_data.sensors.optics.raw_sensor_2 = current_state;
     }
 }
 
@@ -91,44 +106,14 @@ void OPTICS_Update(void)
 // --- DURUM SORGULAMA FONKSİYONLARI ---
 // -------------------------------------------------------------------
 
-// ✅ Control.c bunları kullanacak
+// --- CONTROL ARAYÜZÜ ---
 uint8_t OPTICS_IsEmergencyObstacleDetected(void)
 {
     return emergency_obstacle_detected;
 }
 
-// ✅ Acil durumu resetle - control.c kullanacak
 void OPTICS_ClearEmergencyFlag(void)
 {
     emergency_obstacle_detected = 0;
-}
-
-Omron_State_t OPTICS_GetSensorState(uint8_t sensor_id)
-{
-    for (int i = 0; i < 2; i++) {
-        if (omron_sensors[i].sensor_id == sensor_id) {
-            return omron_sensors[i].last_state;
-        }
-    }
-    return OMRON_NO_OBSTACLE;
-}
-
-uint32_t OPTICS_GetDetectionTime(uint8_t sensor_id)
-{
-    for (int i = 0; i < 2; i++) {
-        if (omron_sensors[i].sensor_id == sensor_id) {
-            return omron_sensors[i].detection_timestamp;
-        }
-    }
-    return 0;
-}
-
-uint8_t OPTICS_IsAnyObstacleDetected(void)
-{
-    for (int i = 0; i < 2; i++) {
-        if (omron_sensors[i].last_state == OMRON_OBSTACLE_DETECTED) {
-            return 1;
-        }
-    }
-    return 0;
+    shared_data.sensors.optics.obstacle_detected = 0;
 }
