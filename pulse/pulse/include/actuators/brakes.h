@@ -1,5 +1,7 @@
+// pulse/pulse/include/actuators/brakes.h
 // Elektromanyetik veya mekanik fren sistemlerini kontrol eden sürücüleri içerir
 // brakes.h - GÜVENLİK GÜNCELLEMESİ
+
 #ifndef BRAKES_H
 #define BRAKES_H
 
@@ -9,10 +11,7 @@ extern "C" {
 
 #include "main.h"
 #include "shared_data.h"
-
-// Brake GPIO Tanımları
-// bunlara gerek yok SİLLLL
-
+#include <stdbool.h> // bool tipi için eklendi
 
 // Fren Durumları
 typedef enum {
@@ -29,34 +28,23 @@ typedef enum {
     BRAKE_ERROR_TIMEOUT = 3
 } BrakeError_t;
 
-BrakeError_t BRAKES_GetLastError(void);
+// --- FONKSİYON PROTOTİPLERİ ---
+
 void BRAKES_Init(void);
-// yeni ekledim 
-void BRAKES_SetState(BrakeState_t state);
+
 /* Fren sistemini istenen duruma getirir.
- state: BRAKE_RELEASED veya BRAKE_ENGAGED */
-void BRAKES_EmergencyEngage(void);
+   state: BRAKE_RELEASED veya BRAKE_ENGAGED */
+void BRAKES_SetState(BrakeState_t state);
+
 // Acil durum frenlemesi. Tüm frenleri maksimum güçte kilitler.
- 
+void BRAKES_EmergencyEngage(void);
+
 bool BRAKES_IsEngaged(void);
+
+BrakeError_t BRAKES_GetLastError(void);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-
-
-/*#ifndef BRAKES_H
-#define BRAKES_H
-
-#include "pico/stdlib.h"
-#include "stdio.h"
-#include "../default_pins.h"
-
-void brakes_configure_pins(); //fren erisimi icin gpio pinlerini hazirlar
-
-void set_brakes(uint brake_pin, enum gpio_dir pin_conf); //fren ciktilarini ayarlar. ornegin gpio x  1 versin vs.
-
-#endif
-*/
