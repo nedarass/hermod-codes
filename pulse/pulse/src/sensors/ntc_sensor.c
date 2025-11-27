@@ -4,9 +4,6 @@
 #include <math.h>
 #include <stdio.h> // printf için
 
-// Sistem Durum yapisi ( veriyi buraya yazacağız)
-extern System_State_t g_system_state;
-
 // Sadece NTC okuması için kullanılan ADC kanalı (Örnek: ADC_CHANNEL_8 -> PB0 pini)
 // LÜTFEN STM32CubeMX'te KULLANILAN PİNİN KANALINI BURAYA YAZINIZ.
 #define NTC_ADC_CHANNEL_1   ADC_CHANNEL_8
@@ -28,34 +25,38 @@ static inline float adc_to_voltage(uint32_t adc)
     return (VREF * (float)adc) / ADC_MAX;
 }
 // Voltajdan NTC direncini hesaplar (Gerilim Bölücü Formülü)
-static float v_to_ntc_resistance(float vout)
+static float Convert_ADC_to_Temp(uint32_t adc_val)
 {
-    // Bölme işleminde sıfıra bölünmeyi engelle
-    if ((VREF - vout) <= 0.001f) return 1000000.0f; // Çok yüksek direnç (soğuk)
-    if (vout <= 0.001f) return 1.0f;                // Çok düşük direnç (sıcak)
+    // 0 veya Max değer gelirse hesaplama yapma (Hata koruması)
+    if (adc_val == 0 || adc_val >= 4095) return 999.0f; // Hata kodu olarak 999
 
-    // Devre Yapısı: [3.3V] -- [R_FIXED] -- (Vout) -- [NTC] -- [GND] varsayımıyla:
-    // Vout = Vref * Rntc / (Rfixed + Rntc) formülünden çekilmiştir:
-    return (R_FIXED * vout) / (VREF - vout);
-}
-// Dirençten Sıcaklığı (Celsius) hesaplar (Beta Formülü)
-static float ntc_resistance_to_temp_c(float r_ntc)
-{
+    // 1. Voltaj Hesabı
+    float v_out = (VREF * (float)adc_val) / ADC_MAX_VAL;
+
+    // 2. Direnç Hesabı (R_ntc)
+    // Devre: 3.3V -> R_FIXED -> [V_OUT] -> NTC -> GND varsayımıyla:
+    // Formül: V_out = V_in * (R_ntc / (R_fixed + R_ntc))
+    // Buradan R_ntc çekilirse: R_ntc = (V_out * R_fixed) / (V_in - V_out)
+    
+    float r_ntc = (v_out * R_FIXED) / (VREF - v_out);
+
+    // 3. Sıcaklık Hesabı (Beta Formülü)
     // 1/T = 1/T0 + (1/B) * ln(R/R0)
     float ln_term = logf(r_ntc / R0);
-    float invT = (1.0f / T0_K) + ((1.0f / BETA) * ln_term);
+    float inv_T = (1.0f / T0_K) + ((1.0f / BETA) * ln_term);
     
-    // Kelvin'den Celsius'a çevir
-    return (1.0f / invT) - 273.15f;
+    // Kelvin -> Celsius
+    return (1.0f / inv_T) - 273.15f;
 }
 // --- ANA FONKSİYONLAR ---
 
 void NTC_Init(void)
 {
-    // Şu anlık özel bir başlatma gerekmiyor, ADC main.c'de başlatılıyor.
+    // Shared Data temizliği
+    shared_data.sensors.battery.ntc_temp_c = 0.0f;
 }
 
-// control.c içerisinden çağrılır.
+
 void NTC_Update(ADC_HandleTypeDef *hadc)
 {
     ADC_ChannelConfTypeDef sConfig = {0};
@@ -66,11 +67,12 @@ void NTC_Update(ADC_HandleTypeDef *hadc)
     // 1. Kanalı Seç (Çoklu kanal kullanılıyorsa bu gereklidir)
     sConfig.Channel = NTC_ADC_CHANNEL_1;
     sConfig.Rank = ADC_REGULAR_RANK_1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_28CYCLES_5; // Orta hızda örnekleme
+    sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES; //DAHA uzun örnekleme
     
     if (HAL_ADC_ConfigChannel(hadc, &sConfig) != HAL_OK)
     {
-        g_system_state.error_flags |= ERR_FLAG_NTC_OOR;
+        // Kanal hatası
+        shared_data.system.error_flags |= ERR_FLAG_NTC_OOR;
         return;
     }
 
@@ -83,27 +85,23 @@ void NTC_Update(ADC_HandleTypeDef *hadc)
         // 4. Değeri Oku
         uint32_t adc_raw = HAL_ADC_GetValue(hadc);
         
-        // 5. Hesaplamaları Yap
-        float v_out = adc_to_voltage(adc_raw);
-        float r_ntc = v_to_ntc_resistance(v_out);
-        float temp_c = ntc_resistance_to_temp_c(r_ntc);
+        // 4. Dönüştür
+        float temp_c = Convert_ADC_to_Temp(adc_raw);
 
-        // 6. Veriyi Global Yapıya Yaz (Örn: 25.45 C -> 2545)
-        // g_System_state raw_temp_ntc1 shared datada kayıtlı 
-        g_system_state.raw_temp_ntc1 = (int16_t)(temp_c * 100.0f);
+        // 5. Kaydet
+        shared_data.sensors.battery.ntc_temp_c = temp_c;
 
-        // Limit Kontrolü (Hata Bayrakları)
-        if (temp_c > 85.0f || temp_c < -20.0f) {
-             g_system_state.error_flags |= ERR_FLAG_NTC_OOR;
-        } else {
-             g_system_state.error_flags &= ~ERR_FLAG_NTC_OOR;
+        // 6. Limit Kontrolü (Güvenlik)
+        if (temp_c > 85.0f) // Örn: 85 derece üstü tehlike
+        {
+             shared_data.system.error_flags |= ERR_FLAG_NTC_OOR;
+             // İleride buraya "Fanları Aç" kodu eklenebilir.
         }
-    }
-    else
-    {
-        // Okuma başarısız
-        g_system_state.error_flags |= ERR_FLAG_NTC_OOR;
-    }
+        else
+        {
+             // Hata bayrağını temizle (Bitwise AND ve NOT)
+             shared_data.system.error_flags &= ~ERR_FLAG_NTC_OOR;
+        }
 
 // 7. ADC'yi Durdur (Güç tasarrufu ve temizlik için)
     HAL_ADC_Stop(hadc);
