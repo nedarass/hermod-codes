@@ -56,7 +56,7 @@ void ENCODER_Update(TIM_HandleTypeDef *htim)
     float position_m = ((float)total_pulse_count / ENCODER_COUNTS_PER_REV) * WHEEL_CIRCUMFERENCE_M;
 
    // Veri yolunu takip et: shared_data -> sensors -> encoder -> degisken
-    shared_data.sensors.encoder.velocity_mps = filtered_velocity; // Filtrelenmiş hız
+    shared_data.sensors.encoder.velocity_mps = velocity_mps; // Filtrelenmiş hız
     shared_data.sensors.encoder.position_m   = position_m;
     shared_data.sensors.encoder.total_pulse  = total_pulse_count; // Debug için ekledik
 
