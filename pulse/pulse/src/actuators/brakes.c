@@ -1,7 +1,17 @@
 
-#include "actuators/brakes.h"
+#include "brakes.h"
 #include "shared_data.h"
 #include <string.h>
+/* --- DİKKAT: CUBEMX AYARLARI ---
+ * Fren pinlerine: "BRAKE_1", "BRAKE_2"
+ * Fren geri bildirim sensörüne (varsa): "BRAKE_SENSOR"
+ * etiketlerini (User Label) vermeniz önerilir.
+ */
+
+// Varsayılan Pin Tanımları (Eğer CubeMX'te tanımlanmadıysa kod patlamasın)
+#ifndef BRAKE_1_Pin
+    // Uyarı: Bu pinler tanımlı değilse fonksiyonlar boş çalışır.
+#endif
 
 // Güvenlik için varsayılan olarak frenler SIKILI (ENGAGED) başlar.
 static BrakeState_t current_brake_state = BRAKE_ENGAGED; 
@@ -113,48 +123,9 @@ BrakeError_t BRAKES_GetLastError(void)
     
     return last_brake_error;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*#include "pico/stdlib.h"
-#include <stdio.h>
-#include "../../include/default_pins.h"
-#include "../../include/actuators/brakes.h"
-
-void brakes_configure_pins()
+// --- BRAKES_ClearError --- sistemi aç-kapa yapmadan eski errorları sisetemden siler 
+void BRAKES_ClearError(void)
 {
-    gpio_init(BRAKE_0_DIGITAL);
-    gpio_set_dir(BRAKE_0_DIGITAL, GPIO_OUT);
-
-    gpio_init(BRAKE_1_DIGITAL);
-    gpio_set_dir(BRAKE_1_DIGITAL, GPIO_OUT);
-
-    gpio_init(BRAKE_2_DIGITAL);
-    gpio_set_dir(BRAKE_2_DIGITAL, GPIO_OUT);
-
-    gpio_init(BRAKE_3_DIGITAL);
-    gpio_set_dir(BRAKE_3_DIGITAL, GPIO_OUT);
+    last_brake_error = BRAKE_ERROR_NONE;
+    shared_data.actuators.brake_error = BRAKE_ERROR_NONE;
 }
-
-void set_brakes(uint brake_pin, enum gpio_dir pin_conf)
-{
-    gpio_put(brake_pin, pin_conf);
-}
-*/
