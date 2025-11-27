@@ -46,6 +46,14 @@ typedef struct {
     float temp_c;            // Sensör Sıcaklığı (C)
 } MPUSensor_t;
 
+// 4. NAVİGASYON ÇIKTILARI (navigation.c için)
+// Burası, sensör füzyonu sonucu elde edilen "En Doğru" verileri tutar.
+typedef struct {
+    float position_m;        // Filtrelenmiş Konum
+    float velocity_mps;      // Filtrelenmiş Hız
+    float accel_bias_mss;    // Tahmin edilen sensör hatası (Debug için)
+} NavigationData_t;
+
 // ============================================================================
 // --- ANA VERİ YAPISI ---
 // ============================================================================
@@ -63,6 +71,7 @@ typedef struct {
     struct {
         EncoderData_t encoder;   // Encoder verileri burada
         MPUSensor_t mpu;         // MPU9250 verileri
+        NavigationData_t nav;
         // İlerde eklenecekler:
         // BatterySensor_t battery;
     } sensors;
