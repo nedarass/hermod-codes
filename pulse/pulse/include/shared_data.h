@@ -54,6 +54,12 @@ typedef struct {
     float accel_bias_mss;    // Tahmin edilen sensör hatası (Debug için)
 } NavigationData_t;
 
+// 5. BATARYA VE SICAKLIK VERİLERİ (sensors/ntc_sensor.c vb. için)
+typedef struct {
+    uint16_t voltage_mv;     // Batarya Voltajı (mV)
+    int16_t current_ma;      // Batarya Akımı (mA)
+    float ntc_temp_c;        // NTC Sıcaklığı (Celsius)
+} BatteryData_t;
 // ============================================================================
 // --- ANA VERİ YAPISI ---
 // ============================================================================
@@ -72,8 +78,7 @@ typedef struct {
         EncoderData_t encoder;   // Encoder verileri burada
         MPUSensor_t mpu;         // MPU9250 verileri
         NavigationData_t nav;
-        // İlerde eklenecekler:
-        // BatterySensor_t battery;
+        BatteryData_t battery;
     } sensors;
 
     // --- C. AKTÜATÖRLER (Actuators) ---
