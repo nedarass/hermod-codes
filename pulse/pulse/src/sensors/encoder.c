@@ -22,8 +22,9 @@ void ENCODER_Init(TIM_HandleTypeDef *htim)
     // Timer'ı Encoder modunda başlat
     if (HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL) != HAL_OK)
     {
-        // Başlatma hatası olursa hata bayrağı dikilebilir
-        // g_system_state.error_flags |= ...
+        shared_data.system.error_flags |= ENCODER_INIT_ERROR;
+        shared_data.system.health_status = HEALTH_CRITICAL;
+        // Hata handler çağrılabilir, veya log atılabilir
         printf("Encoder Baslatma Hatasi!\r\n");
         return;
     }
