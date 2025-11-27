@@ -110,7 +110,15 @@ typedef struct {
         
     } actuators;
 
-} shared_data_t;
+// hata bayrakları
+typedef struct {
+    struct {
+        uint32_t error_flags;
+        uint32_t health_status;
+
+// Bayrak değerleri:
+#define ENCODER_INIT_ERROR    (1 << 0)
+#define HEALTH_CRITICAL       1
 
 // ============================================================================
 // --- GLOBAL ERİŞİM ---
