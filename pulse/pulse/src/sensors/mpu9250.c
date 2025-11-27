@@ -146,28 +146,3 @@ void MPU9250_Read_DMA_Complete_Callback(void)
     // Sıcaklık Hesabı: Datasheet formülü
     shared_data.sensors.mpu.temp_c = ((float)raw_data.temp - 0) / 333.87f + 21.0f;
 }
-// -------------------------------------------------------------------
-// --- VERİ HAZIR MI KONTROLÜ ---
-// -------------------------------------------------------------------
-uint8_t MPU9250_IsDataReady(void)
-{
-    return mpu9250_data_ready;
-}
-
-// -------------------------------------------------------------------
-// --- VERİYİ ALMA ---
-// -------------------------------------------------------------------
-MPU9250_Data_t* MPU9250_GetData(void)
-{
-    mpu9250_data_ready = 0; // Veri alındı, flag'i temizle
-    return &mpu9250_data;
-}
-
-// -------------------------------------------------------------------
-// --- I2C HATA CALLBACK ---
-// -------------------------------------------------------------------
-void MPU9250_Error_Callback(void)
-{
-    printf("MPU9250: I2C/DMA hatasi! Veri okunamadi.\r\n");
-    g_system_state.error_flags |= ERR_FLAG_MPU_FAIL;
-}
