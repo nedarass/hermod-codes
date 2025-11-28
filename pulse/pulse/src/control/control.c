@@ -18,9 +18,9 @@
 #include "navigation.h"
 
 // --- AKTÜATÖR SÜRÜCÜLERİ (Otonom kontrol için) ---
-//#include "actuators/brakes.h"      // Fren kontrolü
-//#include "actuators/vesc6.h"       // Motor kontrolü
-//#include "actuators/power_cut.h"   // Güç kesme kontrolü
+#include "actuators/brakes.h"      // Fren kontrolü
+#include "actuators/vesc6.h"       // Motor kontrolü
+#include "actuators/power_cut.h"   // Güç kesme kontrolü
 
 #include <stdio.h> // printf için
 #include <math.h>
@@ -31,162 +31,146 @@ extern ADC_HandleTypeDef hadc1; // NTC Sensörü için
 extern TIM_HandleTypeDef htim3; // Encoder için (Encoder Modunda)
 extern I2C_HandleTypeDef hi2c1; // MPU9250 için
 
-// --- GLOBAL SİSTEM DURUMU ---
-extern System_State_t g_system_state;
 
-// --- ZAMANLAYICI DEĞİŞKENLERİ ---
-static uint32_t last_sensor_update = 0; // 10ms (100 Hz)
-static uint32_t last_telemetry_tx = 0;  // 100ms (10 Hz)
-static uint32_t last_health_tx = 0;     // 1000ms (1 Hz)
-
-// --- OTONOM KONTROL DEĞİŞKENLERİ ---
-static float target_speed_mps = 0.0f;
+// --- AYARLAR ---
 static const float EMERGENCY_SPEED = 90.0f;
 static const float MAX_SAFE_SPEED = 80.0f;
+static const float CRITICAL_TEMP = 75.0f;
+static const float CRITICAL_VOLTAGE_V = 42.0f;
+static const float DT = 0.01f; // 10ms
 
-// Navigasyon ve Kontrol döngüsü periyodu (Saniye cinsinden)
-static const float DT = 0.01f; 
-
+static uint32_t last_sensor_update = 0;
+static uint32_t last_telemetry_tx = 0;
+static uint32_t last_health_tx = 0;
+static float target_speed_mps = 0.0f;
 // -------------------------------------------------------------------
 // --- BAŞLATMA FONKSİYONU ---
 // -------------------------------------------------------------------
 void CONTROL_Init(void)
 {
-    // 1. Sensör Sürücülerini Başlat
-    // Donanım adreslerini (Handle) sürücülere gönderiyoruz.
-    
-    NTC_Init(); 
-    ENCODER_Init(&htim3); 
-    
-    // MPU9250 Başlatma (Başarısız olursa hata bayrağı dikilir)
+    NTC_Init();
+    ENCODER_Init(&htim3);
     if (MPU9250_Init(&hi2c1) != HAL_OK) {
-        g_system_state.error_flags |= ERR_FLAG_MPU_FAIL;
-        printf("MPU9250 Baslatma Hatasi!\r\n");
+        shared_data.system.error_flags |= ERR_FLAG_MPU_FAIL;
     }
-
-    // Navigasyon (Kalman Filtresi) Başlatma
     NAVIGATION_Init();
-
-    // OPTICS Başlatma 
     OPTICS_Init();
-
-    // 2. Haberleşmeyi Başlat (UART Kesmesi)
     COMM_Init();
     
-    // 3. Sistem Hazır Mesajı
-    printf("CONTROL: Sistem baslatildi. Dongu basliyor.\r\n");
+    // Güvenlik: Frenleri kilitli başlat
+    BRAKES_SetState(BRAKE_ENGAGED);
+    
+    printf("CONTROL: Sistem Hazir.\r\n");
 }
 void CONTROL_AutonomousDecisions(void)
 {
-    // Hyperloop için gerçekçi değerler (tahmini)
-    const float MAX_SAFE_SPEED = 80.0f;        // m/s (~288 km/h)
-    const float CRITICAL_TEMP = 75.0f;         // °C - Motor sıcaklığı
-    const float WARNING_TEMP = 60.0f;          // °C  
-    const float LOW_VOLTAGE_THRESHOLD = 44.0f; // V (12S Lipo ~44V min)
-    const float CRITICAL_VOLTAGE = 42.0f;      // V
     
-    float current_temp = g_system_state.raw_temp_ntc1 / 100.0f;
-    float current_voltage = g_system_state.raw_voltage_mv / 1000.0f;
+    // A. VERİLERİ OKU (Doğru Kaynaktan: Füzyon ve İşlenmiş Veriler)
+    // -----------------------------------------------------------
+    float velocity_mps = shared_data.sensors.nav.velocity_mps; // Kalman Filtreli Hız
+    float temp_c       = shared_data.sensors.battery.ntc_temp_c;
+    float voltage_v    = shared_data.sensors.battery.voltage_mv / 1000.0f;
+    bool  obstacle     = OPTICS_IsEmergencyObstacleDetected();
 
-    // ========================
-    // 🔴 KRİTİK ACİL DURUMLAR - SİSTEMİ TAMAMEN DURDUR
-    // ========================
-    
-    // 1. ACİL: ÇOK YÜKSEK HIZ
-    if (g_system_state.velocity_mps > EMERGENCY_SPEED) {
-        printf("🚨🚨 ACİL DURUM: Asiri hiz %.1f m/s > %.1f m/s\r\n", 
-               g_system_state.velocity_mps, EMERGENCY_SPEED);
-        
-        SYSTEM_EmergencyPowerCut();  // commands.c'den
-        BRAKES_EmergencyEngage();    // brakes.h'den
-        
-        return; // Fonksiyondan çık, başka karar alınmasın
+  // B. ACİL DURUM KONTROLLERİ (Safety First)
+    // -----------------------------------------------------------
+    bool emergency_trigger = false;
+
+    // 1. Aşırı Hız
+    if (velocity_mps > EMERGENCY_SPEED) {
+        printf("🚨 ACIL: Asiri Hiz (%.1f m/s)!\r\n", velocity_mps);
+        emergency_trigger = true;
     }
-    
-    // 2. ACİL: KRİTİK VOLTAJ
-    if (current_voltage < CRITICAL_VOLTAGE) {
-        printf("🚨🚨 ACİL DURUM: Kritik voltaj %.1fV < %.1fV\r\n", 
-               current_voltage, CRITICAL_VOLTAGE);
-        
-        SYSTEM_EmergencyPowerCut();
-        BRAKES_EmergencyEngage();
-        
-        return;
+    // 2. Kritik Düşük Voltaj (1V altı sensör hatasıdır, onu yoksay)
+    else if (voltage_v < CRITICAL_VOLTAGE_V && voltage_v > 1.0f) {
+        printf("🚨 ACIL: Kritik Batarya Voltaji (%.1f V)!\r\n", voltage_v);
+        emergency_trigger = true;
     }
-    
-    // 3. ACİL: ÇOK YÜKSEK SICAKLIK + YÜKSEK HIZ
-    if (current_temp > CRITICAL_TEMP + 10.0f && g_system_state.velocity_mps > 20.0f) {
-        printf("🚨🚨 ACİL DURUM: Asiri sicaklik %.1f°C ve yuksek hiz\r\n", current_temp);
-   
-        SYSTEM_EmergencyPowerCut(); 
-        BRAKES_EmergencyEngage();
-        
-        return;
+    // 3. Aşırı Sıcaklık
+    else if (temp_c > CRITICAL_TEMP) {
+        printf("🚨 ACIL: Batarya/Motor Asiri Isindi (%.1f C)!\r\n", temp_c);
+        emergency_trigger = true;
     }
  
-   // 4. ACİL: OMRON ENGEL TESPİTİ! -
-    if (OPTICS_IsEmergencyObstacleDetected()) {
-        printf("🚨🚨 ACİL DURUM: Omron engel tespit edildi! Frenleme yapılıyor...\r\n");
-        
-        SYSTEM_EmergencyPowerCut();
-        BRAKES_EmergencyEngage();
-        
-        // Flag'i temizle (bir sonraki döngüde tekrar kontrol et)
-        OPTICS_ClearEmergencyFlag();
-        
-        return; // Diğer kararları engelle
+   // 4. Engel Tespiti (Optik Sensör)
+    else if (obstacle) {
+        printf("🚨 ACIL: Rayda Engel Tespit Edildi!\r\n");
+        emergency_trigger = true;
+        OPTICS_ClearEmergencyFlag(); // Flag'i temizle ki sürekli tetiklemesin
     }
-    
-    // 1. HIZ KONTROLÜ - Aşırı hız koruması
-    if (g_system_state.velocity_mps > MAX_SAFE_SPEED) {
-        float overspeed_ratio = (g_system_state.velocity_mps - MAX_SAFE_SPEED) / MAX_SAFE_SPEED;
-        uint8_t brake_power = (uint8_t)(overspeed_ratio * 60.0f); // %0-60 fren
+
+    // Eğer herhangi bir acil durum varsa -> SİSTEMİ KAPAT
+    if (emergency_trigger) {
+        SYSTEM_EmergencyPowerCut(); // commands.c içindeki fonksiyon (Güç kes + Frenle + Logla)
+        return; // Fonksiyondan çık, gaz verme kodu çalışmasın
+    }
+ 
+    // Normal Sürüş Protokolu 
+ 
+    // A. HIZ KONTROLÜ - Aşırı hız koruması (Oransal Frenleme)
+    if (velocity_mps > MAX_SAFE_SPEED) 
+    {
+        // Ne kadar hızlıyız? Orana göre fren şiddetini ayarla.
+        // Örn: 88 m/s gidiyoruz (Sınır 80). Fark 8. Oran = 0.1 (%10).
+        // Fren Gücü = 0.1 * 600 = 60 (Maks %60 fren uygula ki tekerlek kilitlenmesin)
         
+        float overspeed_ratio = (velocity_mps - MAX_SAFE_SPEED) / MAX_SAFE_SPEED;
+        uint8_t brake_power = (uint8_t)(overspeed_ratio * 600.0f); // Katsayıyı artırdım
+        
+        if (brake_power > 100) brake_power = 100;
+        if (brake_power < 10) brake_power = 10; // En az %10 dokun
+
         BRAKE_SetForce(brake_power);
-        printf("🚨 OTONOM FREN: %.1f m/s > %.1f m/s, Fren=%u%%\r\n", 
-               g_system_state.velocity_mps, MAX_SAFE_SPEED, brake_power);
+        MOTOR_SetTargetSpeed(0); // Gazı kes
+        
+        printf("⚠️ OTONOM FREN: Hiz %.1f, Fren Gücü %%%d\r\n", velocity_mps, brake_power);
+        return; // Hızlanma koduna girme
     }
     
-    // 2. SICAKLIK KONTROLÜ - Motor/batarya soğutma
-    if (current_temp > CRITICAL_TEMP) {
-        // Kritik sıcaklık - acil yavaşlama
-        target_speed_mps = target_speed_mps * 0.3f; // %70 yavaşla
-        BRAKE_SetForce(50); // %50 fren
-        printf("🔥 KRITIK SICAKLIK: %.1f°C, Hiz dusuruluyor\r\n", current_temp);
+    // B. SICAKLIK KONTROLÜ (Isınmaya Göre Yavaşlama)
+    if (current_temp > CRITICAL_TEMP) 
+    {
+        // Kritik sıcaklık - Çok sert yavaşla
+        effective_target_mps = effective_target_mps * 0.3f; // Hedefi %70 düşür
+        BRAKE_SetForce(50); // Yardımcı fren
+    } 
+    else if (current_temp > WARNING_TEMP) 
+    {
+        // Uyarı sıcaklığı - Lineer (Oransal) yavaşlama
+        // 60C -> %100 Hız, 75C -> %50 Hız gibi bir rampa oluşturuyoruz.
+        float reduction_factor = 1.0f - ((current_temp - WARNING_TEMP) / (CRITICAL_TEMP - WARNING_TEMP)) * 0.5f;
         
-    } else if (current_temp > WARNING_TEMP) {
-        // Uyarı sıcaklığı - kademeli yavaşlama  
-        float reduction = 1.0f - ((current_temp - WARNING_TEMP) / (CRITICAL_TEMP - WARNING_TEMP)) * 0.5f;
-        target_speed_mps = target_speed_mps * reduction;
-        printf("⚠️  YUKSEK SICAKLIK: %.1f°C, Hiz %.0f%%\r\n", current_temp, reduction * 100.0f);
+        effective_target_mps = effective_target_mps * reduction_factor;
     }
-    
-    // 3. VOLTAJ KONTROLÜ - Batarya koruma
-    if (current_voltage < CRITICAL_VOLTAGE) {
-        // Kritik voltaj - acil durum
-        target_speed_mps = 0.0f;
-        BRAKE_SetForce(100);
-        printf("🔋 KRITIK VOLTAJ: %.1fV, ACIL DURUM!\r\n", current_voltage);
-        
-    } else if (current_voltage < LOW_VOLTAGE_THRESHOLD) {
-        // Düşük voltaj - yavaşla ve uyar
-        target_speed_mps = target_speed_mps * 0.5f; // %50 yavaşla
-        printf("⚠️  DUSUK VOLTAJ: %.1fV, Hiz yariya dusuruldu\r\n", current_voltage);
+ 
+   // C. VOLTAJ KONTROLÜ (Pil Tasarrufu)
+    if (current_volts < LOW_VOLTAGE_THRESHOLD && current_volts > 1.0f) 
+    {
+        effective_target_mps = effective_target_mps * 0.5f; // %50 Güç tasarrufu
     }
     
     // 4. HEDEF HIZ KONTROLÜ - PID benzeri basit kontrol
-    float speed_error = target_speed_mps - g_system_state.velocity_mps;
-    
-    if (speed_error < -2.0f) {
-        // Çok hızlı - frenle (hedeften 2 m/s fazla)
-        uint8_t brake_power = (uint8_t)(fabsf(speed_error) * 10.0f);
-        if (brake_power > 70) brake_power = 70;
-        BRAKE_SetForce(brake_power);
+    float speed_error = effective_target_mps - velocity_mps;
+
+    // Senaryo 1: Hedefin çok üzerindeyiz (Yavaşlamalıyız)
+    if (speed_error < -2.0f) 
+    {
+        // Hata ne kadar büyükse o kadar sert fren yap
+        // Örn: Fark 5 m/s -> Fren 5 * 5 = %25
+        uint8_t brake_force = (uint8_t)(fabsf(speed_error) * 5.0f);
+        if (brake_force > 100) brake_force = 100;
         
-    } else if (speed_error > 2.0f) {
-        // Çok yavaş - frenleri serbest bırak
+        BRAKE_SetForce(brake_force);
+        MOTOR_SetTargetSpeed(0); // Motoru boşa çıkar
+    } // Senaryo 2: Hedefe yakınız veya altındayız (Hızlanmalıyız veya Süzülmeliyiz)
+    else 
+    {
+        // Frenleri bırak
         BRAKE_SetForce(0);
-        printf("🚀 OTONOM HIZLANMA: Frenler serbest\r\n");
+
+        // Motor sürücüsüne YENİ (limite takılmış/düşürülmüş) hedefi gönder
+        // Eğer sıcaklık/voltaj limitleri hızı düşürdüyse, motor buradaki yeni değeri alacak.
+        MOTOR_SetTargetSpeed(effective_target_mps);
     }
 }
 
@@ -228,51 +212,41 @@ void CONTROL_Loop(void)
     if (current_tick - last_sensor_update >= 10)
     {
       
-        // --- A. Sensör Güncellemeleri ---
+        // 1. Sensörleri Oku
+        NTC_Update(&hadc1);             // Sıcaklık
+        ENCODER_Update(&htim3);         // Ham Hız
+        MPU9250_Trigger_Read(&hi2c1);   // İvme (DMA Başlat)
+        OPTICS_Update();                // Engel Kontrolü
         
-        // NTC (Sıcaklık) Okuması:
-        // Polling modunda çalışır, işlemciyi çok kısa süre meşgul eder.
-        NTC_Update(&hadc1); 
-
-        // Encoder (Hız/Konum) Okuması:
-        // Timer donanımından anlık değeri çeker. Çok hızlıdır.
-        ENCODER_Update(&htim3);
-
-        // MPU9250 (İvme/Jiro) Okuması (DMA Modu):
-        // Sadece okumayı TETİKLER. Veri arka planda gelir ve kesme (IRQ) ile işlenir.
-        // CPU'yu bekletmez.
-        MPU9250_Trigger_Read(&hi2c1); 
-
-        OPTICS_Update();
-        // --- B. Sensör Füzyonu (Navigation) ---
-        // MPU ve Encoder'dan gelen en son verileri birleştirir.
-        // Not: MPU verisi bir önceki döngüden veya DMA kesmesinden gelmiş olabilir.
+        // 2. Sensör Füzyonu (Verileri Birleştir)
         NAVIGATION_Update(DT); 
-
-        // ========================
-        // 3. OTONOM KARARLAR - Fiziksel kontrol
-        // ========================
+        
+        // 3. Karar Ver (Frenle, Dur veya Git)
         CONTROL_AutonomousDecisions();
 
+        // Çalışma süresini güncelle
+        shared_data.system.run_time_ms = current_tick;
         last_sensor_update = current_tick;
-        }
-
-    // ============================================================
-    // 2. TELEMETRİ GÖNDERİMİ (Her 100ms'de bir)
+    }
+   // ============================================================
+    // B. 10Hz ÇEVRİMİ (Telemetri - Hızlı Veriler)
     // ============================================================
     if (current_tick - last_telemetry_tx >= 100)
     {
-        // Hız, Konum, İvme, Sıcaklık vb. verileri Bifrost'a gönder
+        // Hız, Konum, Voltaj vb. gönder
         COMM_SendTelemetryData();
         last_telemetry_tx = current_tick;
     }
 
     // ============================================================
-    // 3. SAĞLIK KONTROLÜ (HEALTH CHECK) (Her 1000ms'de bir)
+    // C. 1Hz ÇEVRİMİ (Sağlık Raporu - Yavaş Veriler)
     // ============================================================
     if (current_tick - last_health_tx >= 1000)
     {
-        // CPU Sıcaklığı, Hata Bayrakları, Ping Süresi vb. gönder
+        // Sahte CPU sıcaklığı (Sensör eklenene kadar)
+        shared_data.system.cpu_temp_c = 35.5f; 
+        
+        // Hata bayrakları ve durum bilgisi gönder
         COMM_SendHealthCheck();
         last_health_tx = current_tick;
     }
