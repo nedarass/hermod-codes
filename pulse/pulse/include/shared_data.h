@@ -90,7 +90,12 @@ typedef struct {
         bool emergency_mode;     
         uint32_t error_flags;    
         uint32_t run_time_ms;    
-        uint32_t health_status;  
+        uint32_t health_status; 
+
+    // --- YENİ EKLENENLER (Health Check İçin) ---
+        float cpu_temp_c;        // İşlemci Sıcaklığı (İlerde eklenecek)
+        uint16_t last_ping_ms;   // Son ping gecikmesi
+        uint8_t system_status;   // 0: Init, 1: Running, 2: Error (RTOS yerine)
     } system;
 
     // --- B. SENSÖRLER (Sensors) ---
