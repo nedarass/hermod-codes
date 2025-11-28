@@ -200,10 +200,30 @@ void COMM_SendTelemetryData(void)
 
 void COMM_SendHealthCheck(void)
 {
-    // Health verileri (Şimdilik dummy veya shared_data system altından)
-    uint32_t flags = shared_data.system.error_flags;
-    COMM_TransmitTelemetry(ID_ERROR_FLAG, TYPE_BIN, &flags, sizeof(uint32_t));
-    
-    uint8_t power = shared_data.actuators.power_state;
-    COMM_TransmitTelemetry(ID_POWER_LINE_STATUS, TYPE_U8, &power, sizeof(uint8_t));
+   // 1. CPU SICAKLIĞI
+    // Not: İşlemci içi sıcaklık sensörü henüz aktif değil.
+    // İlerde: HAL_ADC_GetValue(&hadc1) ile okunacak. Şimdilik shared_data'dan al.
+    COMM_TransmitTelemetry(ID_CPU_TEMP, TYPE_F32, 
+                           &shared_data.system.cpu_temp_c, sizeof(float));
+
+    // 2. HATA BAYRAKLARI (En Kritik Veri)
+    // 32-bitlik hata maskesini (0x00000001 gibi) gönderiyoruz.
+    COMM_TransmitTelemetry(ID_ERROR_FLAG, TYPE_BIN, 
+                           &shared_data.system.error_flags, sizeof(uint32_t));
+
+    // 3. GÜÇ HATTI DURUMU (Röle çekili mi?)
+    // actuators.power_state verisini (0:OFF, 1:ON) kullanıyoruz.
+    COMM_TransmitTelemetry(ID_POWER_LINE_STATUS, TYPE_U8, 
+                           &shared_data.actuators.power_state, sizeof(uint8_t));
+
+    // 4. PING / İLETİŞİM GECİKMESİ
+    // Son ölçülen ping süresini gönder.
+    COMM_TransmitTelemetry(ID_PING_RESPONSE, TYPE_I16, 
+                           &shared_data.system.last_ping_ms, sizeof(uint16_t));
+
+    // 5. SİSTEM DURUMU (RTOS Task Yerine)
+    // RTOS olmadığı için "Main Loop Çalışıyor" anlamında 1 gönderiyoruz.
+    // Eğer error_flags 0 değilse durum 2 (Hata) olarak da gönderilebilir.
+    uint8_t status = (shared_data.system.error_flags == 0) ? 1 : 2; 
+    COMM_TransmitTelemetry(ID_RTOS_STATUS, TYPE_U8, &status, sizeof(uint8_t));
 }
