@@ -1,14 +1,15 @@
 
-#include "actuators/vesc6.h"
+// pulse/pulse/src/actuators/vesc6.c
+#include "vesc6.h" // Include yolunu düzelttim
 #include "shared_data.h"
 #include <string.h>
 
 static UART_HandleTypeDef *vesc_huart = NULL;
-static VESC_Status_t vesc_status = {0};
+// static VESC_Status_t vesc_status = {0}; // GEREKSİZ, Shared Data kullanacağız
 static uint32_t last_vesc_communication = 0;
 
-// --- VESC_CalculateChecksum --- VESC protokolüne özel CRC (Hata doğrulama) hesaplar.
-// Verinin yolda bozulup bozulmadığını kontrol eder.
+// --- VESC_CalculateChecksum (Static - Sadece bu dosyada kullanılır) ---
+// CRC-16-CCITT (Poly: 0x1021)
 static uint16_t VESC_CalculateChecksum(uint8_t *data, uint16_t len)
 {
     uint16_t crc = 0;
@@ -22,8 +23,8 @@ static uint16_t VESC_CalculateChecksum(uint8_t *data, uint16_t len)
     return crc;
 }
 
-// --- VESC_SendPacket --- Veriyi VESC'in anlayacağı paket formatına sokar:
-// [BAŞLANGIÇ] [UZUNLUK] [VERİ] [CRC_H] [CRC_L] [BİTİŞ]
+// --- VESC_SendPacket ---
+// [BAŞLANGIÇ(0x02)] [UZUNLUK] [VERİ] [CRC_H] [CRC_L] [BİTİŞ(0x03)]
 static bool VESC_SendPacket(uint8_t *payload, uint16_t len)
 {
     if (vesc_huart == NULL || payload == NULL || len > 250) return false;
@@ -57,7 +58,8 @@ static bool VESC_SendPacket(uint8_t *payload, uint16_t len)
 void VESC_Init(UART_HandleTypeDef *huart)
 {
     vesc_huart = huart;
-    memset(&vesc_status, 0, sizeof(VESC_Status_t));
+    // Shared Data içindeki VESC yapısını sıfırla
+    memset(&shared_data.actuators.vesc_status, 0, sizeof(VESC_Data_t));
 }
 
 // --- VESC_SetRPM --- Hız komutunu gönderir. Sayıyı byte'lara bölerek (Big Endian) paketler.
@@ -66,9 +68,9 @@ bool VESC_SetRPM(int32_t rpm)
     if (vesc_huart == NULL) return false;
     
     uint8_t payload[5];
-    payload[0] = 0x08; // VESC Komutu: RPM Ayarla
+    payload[0] = 0x08; // COMM_SET_RPM
     
-    // 32-bit sayıyı 4 tane 8-bitlik parçaya böl
+    // Big Endian (MSB First)
     payload[1] = (rpm >> 24) & 0xFF;
     payload[2] = (rpm >> 16) & 0xFF;
     payload[3] = (rpm >> 8) & 0xFF;
@@ -77,7 +79,10 @@ bool VESC_SetRPM(int32_t rpm)
     bool success = VESC_SendPacket(payload, 5);
     
     if (success) {
-        shared_data.actuators.vesc_status.rpm = rpm; // Son durumu kaydet
+        // Hedefi kaydet (Telemetri için)
+        // DİKKAT: Buraya vesc_status.rpm YAZMIYORUZ. O gerçek hızdır.
+        // Buraya sadece hedefimizi (target) yazıyoruz.
+        shared_data.actuators.target_rpm = rpm; 
     }
     return success;
 }
@@ -87,162 +92,81 @@ bool VESC_SetCurrent(int32_t current_ma)
 {
     if (vesc_huart == NULL) return false;
     
-    // Aşırı akım koruması (Yazılımsal Limit)
-    if (current_ma < -20000 || current_ma > 20000) return false;
+    // Aşırı akım koruması (Limit Artırıldı: 40A)
+    // Hyperloop kalkışında yüksek akım gerekebilir.
+    if (current_ma < -40000 || current_ma > 40000) return false; 
     
     uint8_t payload[5];
-    payload[0] = 0x06; // VESC Komutu: Akım Ayarla
+    payload[0] = 0x06; // COMM_SET_CURRENT
     
     payload[1] = (current_ma >> 24) & 0xFF;
     payload[2] = (current_ma >> 16) & 0xFF;
     payload[3] = (current_ma >> 8) & 0xFF;
     payload[4] = current_ma & 0xFF;
 
-    bool success = VESC_SendPacket(payload, 5);
-    
-    if (success) {
-        shared_data.actuators.vesc_status.current = current_ma;
-    }
-    return success;
+    return VESC_SendPacket(payload, 5);
 }
 
-// --- YENİ EKLENENLER: Veri Okuma ---
-
-// 1. Veri İste (Request Status)
+// --- VESC_RequestStatus ---
 bool VESC_RequestStatus(void)
 {
     if (vesc_huart == NULL) return false;
     uint8_t payload[1];
-    payload[0] = 0x04; // COMM_GET_VALUES (VESC'den tüm telemetriyi ister)
+    payload[0] = 0x04; // COMM_GET_VALUES
     return VESC_SendPacket(payload, 1);
 }
 
-// 2. Gelen Veriyi Çöz (Parse Status)
-// Bu fonksiyon, UART RX Interrupt (Kesme) içinde veya DMA buffer okunduğunda çağrılmalıdır.
-// Basitleştirilmiş örnek: buffer'ın tam bir VESC paketi olduğunu varsayar.
+// --- VESC_ParseStatus ---
+// Bu fonksiyon main.c içinde UART RX Interrupt'ından veya Buffer dolunca çağrılır.
 bool VESC_ParseStatus(uint8_t *buffer, uint16_t len)
 {
-    // Minimum uzunluk ve CRC kontrolü yapılmalı... (Burada özet geçiyorum)
-    // VESC Response Format (COMM_GET_VALUES):
-    // [ID(0x04)] [Temp MOS] [Temp Motor] [Current Motor] [Current Input] ...
-    
-    if (buffer[0] != 0x04) return false;
+    // Minimum uzunluk kontrolü (Örn: ID + Payload + CRC + End)
+    if (len < 10) return false;
+
+    // VESC Paket Başlangıcı Kontrolü
+    if (buffer[0] != 0x04) return false; // Paket ID: COMM_GET_VALUES değilse çık
 
     int32_t ind = 1;
 
-    // VESC protokolünde değerler genellikle 16-bit veya 32-bit Scaled Integer olarak gelir.
-    // Örnek: Sıcaklık (x10), Akım (x100), Voltaj (x10) vb. 
-    // *Not: Bu detaylı protokol VESC firmware sürümüne göre değişebilir.*
+    // --- PROTOKOL AYRIŞTIRMA (PARSING) ---
+    // Not: Bu sıralama Standart VESC Firmware 5.x/6.x yapısına göredir.
+    
+    // 1. Temp MOSFET (2 byte, scale 10)
+    // int16_t temp_mos = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); 
+    ind += 2;
 
-    // ÖRNEK OKUMA (Sıralama standart VESC FW'ye göredir):
-    // Temp MOSFET (2 byte, scale 10)
-    int16_t temp_mos = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
-    vesc_status.temperature = (float)temp_mos / 10.0f;
+    // 2. Temp Motor (2 byte, scale 10)
+    int16_t temp_motor = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
+    shared_data.actuators.vesc_status.temperature = (float)temp_motor / 10.0f;
 
-    // Temp Motor (2 byte, scale 10)
-    ind += 2; // Atla
-
-    // Motor Current (4 byte, scale 100)
+    // 3. Motor Current (4 byte, scale 100)
+    // DÜZELTME: VESC genelde Centiamps (x100) gönderir. 
+    // Bizim shared_data mA tutuyor. 5A -> VESC: 500 -> Biz: 5000mA olmalı.
+    // Bu yüzden 10 ile çarpıyoruz. BUNU TEST EDEREK KONTROL ETMEN GEREKİYOR (STM32-VESC kaç katını alıyor) 
     int32_t current = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
     ind += 4;
-    vesc_status.current = current / 100; // Amper'e çevir
+    shared_data.actuators.vesc_status.current = current * 10; 
 
-    // Input Current (4 byte)
+    // 4. Input Current (4 byte) - Atlıyoruz
+    ind += 4; 
+
+    // 5. ID (4 byte) - Atlıyoruz
     ind += 4; // Atla
 
-    // ID (4 byte)
+    // 6. Z (4 byte) - Atlıyoruz
     ind += 4; // Atla
 
-    // Z (4 byte)
-    ind += 4; // Atla
-
-    // Input Voltage (2 byte, scale 10)
+    // 7. Input Voltage (2 byte, scale 10)
     int16_t voltage = (int16_t)((buffer[ind] << 8) | buffer[ind+1]); ind += 2;
-    vesc_status.voltage = (float)voltage / 10.0f;
+    shared_data.actuators.vesc_status.voltage = (float)voltage / 10.0f;
 
-    // RPM (4 byte, scale 1)
-    vesc_status.rpm = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
+    // 8. RPM (4 byte, scale 1)
+    int32_t rpm = (int32_t)((buffer[ind] << 24) | (buffer[ind+1] << 16) | (buffer[ind+2] << 8) | buffer[ind+3]);
+    ind += 4;
+    shared_data.actuators.vesc_status.rpm = rpm;
     
-    // --- Shared Data Güncelleme ---
-    shared_data.actuators.vesc_status.rpm = vesc_status.rpm;
-    shared_data.actuators.vesc_status.current = vesc_status.current;
-    shared_data.actuators.vesc_status.voltage = vesc_status.voltage;
-    shared_data.actuators.vesc_status.temperature = vesc_status.temperature;
+    // Sürücü durumunu güncelle
+    shared_data.actuators.inverter_state = 2; // INVERTER_STATE_RUNNING
 
     return true;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*#include "../../include/actuators/vesc6.h"
-#include "hardware/pwm.h"
-#include "hardware/clocks.h"
-
-void vesc6_configure()
-{
-    // uart baslat
-    uart_init(UART_ID, BAUD_RATE);
-    
-    // pinleri belirle
-    gpio_set_function(VESC6_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(VESC6_RX_PIN, GPIO_FUNC_UART);
-}
-
-uint8_t calculate_checksum(uint8_t *data, int len) {
-    uint8_t checksum = 0;
-    for (int i = 1; i < len - 1; i++) {
-        checksum ^= data[i];
-    }
-    return checksum;
-}
-
-//test edicez vesc6 protokole internetten baktim
-void set_motor_rpm(int rpm)
-{
-    uint8_t buffer[8];
-
-    buffer[0] = 2;
-    buffer[1] = 4; //veri uzunlugu
-    buffer[2] = 3; // vesc6 komut kodu (COMM_Set_RPM)
-    buffer[3] = (rpm >> 24) & 0xFF;
-    buffer[4] = (rpm >> 16) & 0xFF;
-    buffer[5] = (rpm >> 8) & 0xFF;
-    buffer[6] = rpm & 0xFF;
-    buffer[7] = calculate_checksum(buffer, 8);
-
-    uart_write_blocking(UART_ID, buffer, 8);
-}
-*/
