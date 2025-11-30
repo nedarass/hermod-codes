@@ -1,5 +1,5 @@
-// cooling.h - ÖNERİ
-// Motor sürücüler (VESC/Inverter) ve Li-Po bataryalar kapalı bir kabuk (pod) içinde çok ısınır. Basit bir MOSFET veya Röle üzerinden kontrol edilen fanlara
+// pulse/pulse/include/actuators/cooling.h
+// Batarya ve Motor soğutma fanlarının kontrolü
 #ifndef COOLING_H
 #define COOLING_H
 
@@ -8,13 +8,19 @@ extern "C" {
 #endif
 
 #include "main.h"
+#include <stdbool.h>
 
-// Fan seviyeleri (Eğer PWM kullanacaksan) veya sadece AÇ/KAPA
+// Başlatma
 void COOLING_Init(void);
-void COOLING_SetFanState(bool state); // Tüm fanları aç/kapa
-void COOLING_SetFanSpeed(uint8_t speed_percent); // PWM varsa %0-100 arası
+
+/* Fanları AÇAR veya KAPATIR.
+   Donanım Notu: 4 Fan seri bağlı olduğu için hepsi aynı anda açılır/kapanır.
+   Hız kontrolü (PWM) bu konfigürasyonda mümkün değildir. 
+   state: true (AÇIK), false (KAPALI) */
+void COOLING_SetFanState(bool state);
 
 #ifdef __cplusplus
 }
 #endif
 #endif
+
