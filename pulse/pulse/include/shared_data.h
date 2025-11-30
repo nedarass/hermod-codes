@@ -22,7 +22,7 @@ extern "C" {
 // mpu9250.c ile uyumlu olması için isimleri kısalttım:
 #define ERR_NONE              0
 #define ERR_ENCODER_INIT      (1 << 0) 
-#define ERR_MPU_FAIL          (1 << 1) // Artık mpu9250.c hatası ile uyumlu
+#define ERR_MPU_FAIL          (1 << 1) 
 #define ERR_NTC_OOR           (1 << 2) 
 #define ERR_COMM_TIMEOUT      (1 << 3) 
 #define ERR_POWER_TRIP        (1 << 4) 
@@ -92,10 +92,10 @@ typedef struct {
         uint32_t run_time_ms;    
         uint32_t health_status; 
 
-    // --- YENİ EKLENENLER (Health Check İçin) ---
-        float cpu_temp_c;        // İşlemci Sıcaklığı (İlerde eklenecek)
+        // --- YENİ EKLENENLER (Health Check İçin) ---
+        float cpu_temp_c;        // İşlemci Sıcaklığı
         uint16_t last_ping_ms;   // Son ping gecikmesi
-        uint8_t system_status;   // 0: Init, 1: Running, 2: Error (RTOS yerine)
+        uint8_t system_status;   // 0: Init, 1: Running, 2: Error
     } system;
 
     // --- B. SENSÖRLER (Sensors) ---
@@ -124,6 +124,14 @@ typedef struct {
         int32_t target_rpm;      
         uint8_t inverter_state;  
         VESC_Data_t vesc_status; 
+
+        // --- 5. BUZZER (YENİ EKLENDİ) ---
+        // Tepe Lambasının Sesi (0:Sessiz, 1:Ötüyor)
+        uint8_t buzzer_state;   
+
+        // --- 6. SOĞUTMA (YENİ EKLENDİ) ---
+        // Fanlar (0:Kapalı, 1:Açık)
+        uint8_t cooling_state;  
         
     } actuators;
 
