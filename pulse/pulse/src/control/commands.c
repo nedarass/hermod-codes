@@ -32,8 +32,9 @@ void BRAKE_SetForce(uint8_t force)
     }
     
     // Durumu kaydet
-    g_system_state.brake_status = (force > 0) ? 1 : 0;
-    printf("BRAKE: Force=%u%%, State=%s\r\n", force, g_system_state.brake_status ? "ENGAGED" : "RELEASED");em_state.brake_status ? "AKTIF" : "DEAKTIF");
+   shared_data.actuators.brake_state = (force > 0) ? BRAKE_ENGAGED : BRAKE_RELEASED;
+printf("BRAKE: Force=%u%%, State=%s\r\n", force, 
+       (force > 0) ? "ENGAGED" : "RELEASED");
 }
 
 void MOTOR_SetTargetSpeed(float speed_mps)
