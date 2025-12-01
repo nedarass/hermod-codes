@@ -9,8 +9,10 @@
 
 // Harici değişkenler (main.c'de tanimlanan)
 extern UART_HandleTypeDef huart1;
-// Global sistem durum yapısı
-extern System_State_t g_system_state;
+
+// --- AYARLAR ---
+#define WHEEL_RADIUS_M   0.1f         // Tekerlek Yarıçapı (10 cm)
+#define MAX_SPEED_LIMIT  80.0f        // m/s (Güvenlik Limiti)
 
 // -------------------------------------------------------------------
 // --- SİMULASYON AKTÜATÖR FONKSİYONLARI ---
@@ -38,23 +40,23 @@ void MOTOR_SetTargetSpeed(float speed_mps)
 {
     // Hız limit kontrolü
     if (speed_mps < 0) speed_mps = 0;
-    if (speed_mps > 50.0f) speed_mps = 50.0f; // Max 50 m/s (~180 km/h)
+    if (speed_mps > 50.0f) speed_mps = MAX_SPEED_LIMIT; // Max 50 m/s (~180 km/h)
     
     // RPM hesaplama (tekerlek çapına göre)
-    float wheel_rpm = (speed_mps * 60.0f) / (2.0f * 3.14159f * 0.1f); // 0.1m yarıçap varsayımı
+    float wheel_rpm = (speed_mps * 60.0f) / (2.0f * 3.14159f * WHEEL_RADIUS_M); // 0.1m yarıçap varsayımı
+
+    shared_data.actuators.target_rpm = (int32_t)wheel_rpm;
     
     // Motor sürücüsüne komut gönder
-    if (VESC_SetRPM((int32_t)wheel_rpm)) {
-        printf("MOTOR: Target speed=%.2f m/s, RPM=%d\r\n", speed_mps, (int32_t)wheel_rpm);
-    } else {
-        printf("HATA: Motor hiz ayarlanamadi!\r\n");
-        g_system_state.error_flags |= ERR_FLAG_COMM_TIMEOUT;
+    if (!VESC_SetRPM((int32_t)wheel_rpm)) 
+    {
+        shared_data.system.error_flags |= ERR_FLAG_COMM_TIMEOUT;
     }
 }
 
 void SYSTEM_EmergencyPowerCut(void)
 {
-     printf("🚨 KRITIK KOMUT: ACIL GUC KESME! Sistemi kapatiliyor...\r\n");
+     //printf("🚨 KRITIK KOMUT: ACIL GUC KESME! Sistemi kapatiliyor...\r\n");
     
     // 1. GERÇEK GÜÇ KESME - power_cut.h'daki fonksiyonu çağır
     POWERCUT_TriggerEmergency();
@@ -62,20 +64,24 @@ void SYSTEM_EmergencyPowerCut(void)
     // 2. FRENLERİ KİLİTLE (Güvenlik)
     BRAKES_EmergencyEngage();
     
-    // 3. DURUMU KAYDET
-    g_system_state.error_flags |= ERR_FLAG_POWER_TRIP;
-    g_system_state.power_line_status = 0;
-    g_system_state.brake_status = 1; // Frenler kilitli
+    // 3. Sistem Durumunu Güncelle
+    shared_data.system.emergency_mode = true;
+    shared_data.system.error_flags |= ERR_FLAG_POWER_TRIP;
+    
+    // Motoru da sustur
+    VESC_SetRPM(0);
 }
 
 // -------------------------------------------------------------------
 // --- ANA KOMUT İŞLEYİCİ (COMMUNICATION.C'DEN ÇAĞRILIR) ---
+// Communication modülünden gelen ham paketi işler ve yönlendirir.
 // -------------------------------------------------------------------
 
 void COMMAND_ProcessIncoming(uint8_t id, uint8_t type, uint8_t *payload, uint16_t len)
 {
     switch (id)
     {
+        // --- SENARYO A: FREN KOMUTU GELDİ ---
         case CMD_BRAKE_ACTUATE:
         {
             if (type == TYPE_U8 && len == 1) {
@@ -86,6 +92,7 @@ void COMMAND_ProcessIncoming(uint8_t id, uint8_t type, uint8_t *payload, uint16_
             }
             break;
         }
+        // --- SENARYO B: HIZ KOMUTU GELDİ ---
         case CMD_SET_TARGET_SPEED:
         {
             if (type == TYPE_F32 && len == sizeof(float)) {
@@ -98,11 +105,13 @@ void COMMAND_ProcessIncoming(uint8_t id, uint8_t type, uint8_t *payload, uint16_
             }
             break;
         }
+        // --- SENARYO C: ACİL DURDURMA GELDİ ---
         case CMD_POWER_CUT_OFF:
         {
             SYSTEM_EmergencyPowerCut();
             break;
         }
+        // --- SENARYO D: PING ---
         case CMD_PING_REQUEST:
         {
             // Ping isteği iletişim katmanında (communication.c) cevaplanır.
