@@ -49,7 +49,7 @@ static const float VOLTAGE_SHUTDOWN = 38.0f;
 static uint32_t last_sensor_update = 0;
 static uint32_t last_telemetry_tx = 0;
 static uint32_t last_health_tx = 0;
-static float target_speed_mps = 0.0f
+static float target_speed_mps = 0.0f;
 
 // -------------------------------------------------------------------
 // --- BAŞLATMA FONKSİYONU ---
