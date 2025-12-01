@@ -184,4 +184,50 @@ std::string SerialManager::readAndParse() {
         } else {
             // CRC Hatası: Paket bozuk gelmiş
             std::cerr << "CRC ERROR! Paket atiliyor." << std::endl;
-            rxBuffer.erase(rxBuffer.
+            rxBuffer.erase(rxBuffer.begin()); // Hatalı paketin başını sil, tekrar dene
+        }
+    }
+    
+    return ""; // İşlenecek tam paket yok
+}
+
+// --- KOMUT GÖNDERME (Bifrost -> STM32) ---
+bool SerialManager::sendCommand(uint8_t cmdId, uint8_t type, const void* payload, int len) {
+    if (serialFd == -1) return false;
+
+    std::vector<uint8_t> packet;
+    
+    // 1. Header
+    packet.push_back(PKT_START);
+    packet.push_back(cmdId);
+    packet.push_back(type);
+    
+    // 2. Uzunluk (Little Endian)
+    packet.push_back(len & 0xFF);
+    packet.push_back((len >> 8) & 0xFF);
+
+    // 3. Payload
+    const uint8_t* pData = (const uint8_t*)payload;
+    for (int i = 0; i < len; i++) {
+        packet.push_back(pData[i]);
+    }
+
+    // 4. CRC (Payload üzerinden)
+    uint16_t crc = CalculateCRC(pData, len);
+    packet.push_back(crc & 0xFF);
+    packet.push_back((crc >> 8) & 0xFF);
+
+    // 5. Footer
+    packet.push_back(PKT_END);
+
+    // 6. Yaz
+    int written = write(serialFd, packet.data(), packet.size());
+    return (written == (int)packet.size());
+}
+
+// Yardımcı fonksiyon: Baudrate çevirici (Header'da tanımlıydı)
+speed_t SerialManager::getBaudRateConst(int baud) {
+    // Bu fonksiyon openSerial içinde zaten switch-case ile halledildi, 
+    // ama header uyumluluğu için boş bırakabilir veya tekrar kullanabilirsin.
+    return B115200; 
+}
