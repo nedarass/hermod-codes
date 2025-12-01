@@ -13,7 +13,6 @@ extern uint8_t rx_data;
 // timeout için 
 static uint32_t last_rx_time = 0;
 #define COMM_TIMEOUT_MS 1000
-#define MAX_FRAME 256
 
 
 // -------------------------------------------------------------------
