@@ -59,7 +59,7 @@ void CONTROL_Init(void)
     NTC_Init();
     ENCODER_Init(&htim3);
     if (MPU9250_Init(&hi2c1) != HAL_OK) {
-        shared_data.system.error_flags |= ERR_FLAG_MPU_FAIL;
+        shared_data.system.error_flags |= ERR_MPU_FAIL;
     }
     NAVIGATION_Init();
     OPTICS_Init();
@@ -198,11 +198,11 @@ void CONTROL_AutonomousDecisions(void)
 void CONTROL_HandleErrors(void)
 {
     // MPU hatası - 5 saniyede bir yeniden dene
-    if (shared_data.system.error_flags & ERR_FLAG_MPU_FAIL) {
+    if (shared_data.system.error_flags & ERR_MPU_FAIL) {
         static uint32_t mpu_retry_time = 0;
         if (HAL_GetTick() - mpu_retry_time > 5000) {
             if (MPU9250_Init(&hi2c1) == HAL_OK) {
-                shared_data.system.error_flags &= ~ERR_FLAG_MPU_FAIL;
+                shared_data.system.error_flags &= ~ERR_MPU_FAIL;
                 printf("✅ MPU9250 recovery successful\r\n");
             }
             mpu_retry_time = HAL_GetTick();
@@ -210,17 +210,17 @@ void CONTROL_HandleErrors(void)
     }
     
     // Communication hatası - Yeniden başlat
-    if (shared_data.system.error_flags & ERR_FLAG_COMM_TIMEOUT) {
+    if (shared_data.system.error_flags & ERR_COMM_TIMEOUT) {
         printf("⚠️ COMM timeout, restarting...\r\n");
         COMM_Init();
-        shared_data.system.error_flags &= ~ERR_FLAG_COMM_TIMEOUT;
+        shared_data.system.error_flags &= ~ERR_COMM_TIMEOUT;
     }
     
     // NTC sensör hatası
-    if (shared_data.system.error_flags & ERR_FLAG_NTC_OOR) {
+    if (shared_data.system.error_flags & ERR_NTC_OOR) {
         // Sıcaklık normal seviyeye döndü mü kontrol et
         if (shared_data.sensors.battery.ntc_temp_c < TEMP_WARNING) {
-            shared_data.system.error_flags &= ~ERR_FLAG_NTC_OOR;
+            shared_data.system.error_flags &= ~ERR_NTC_OOR;
             printf("✅ NTC sensor recovered\r\n");
         }
     }
