@@ -51,7 +51,7 @@ void MOTOR_SetTargetSpeed(float speed_mps)
     // Motor sürücüsüne komut gönder
     if (!VESC_SetRPM((int32_t)wheel_rpm)) 
     {
-        shared_data.system.error_flags |= ERR_FLAG_COMM_TIMEOUT;
+        shared_data.system.error_flags |= ERR_COMM_TIMEOUT;
     }
 }
 
@@ -67,7 +67,7 @@ void SYSTEM_EmergencyPowerCut(void)
     
     // 3. Sistem Durumunu Güncelle
     shared_data.system.emergency_mode = true;
-    shared_data.system.error_flags |= ERR_FLAG_POWER_TRIP;
+    shared_data.system.error_flags |= ERR_POWER_TRIP;
     
     // Motoru da sustur
     VESC_SetRPM(0);
