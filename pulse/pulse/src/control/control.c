@@ -24,6 +24,7 @@
 
 #include <stdio.h> // printf için
 #include <math.h>
+#include <stdlib.h>
 
 // --- DONANIM HANDLE'LARI (Main.c'den gelir) ---
 // Bu isimlerin CubeMX'teki tanımlarla birebir aynı olduğundan emin olun!
