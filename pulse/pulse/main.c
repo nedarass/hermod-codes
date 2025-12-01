@@ -2,58 +2,45 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Hyperloop Pulse Ana Program Gövdesi
-  ******************************************************************************
-  * @attention
-  *
-  * Bu dosya STM32CubeMX tarafından üretilen yapı üzerine kurulmuştur.
-  * Tüm kontrol lojiği control.c üzerinden yönetilir.
-  *
+  * @brief          : Hyperloop Pulse Ana Kontrol Programı
+  * 
+  * @description    : Bu dosya STM32CubeMX tarafından üretilen yapı üzerine kurulmuştur.
+  *                   Tüm kontrol lojiği control.c üzerinden yönetilir.
+  * 
+  * @attention      : CubeMX'te aşağıdaki ayarlar yapılmalıdır:
+  *                   - Timer 6: 10ms interrupt (100Hz)
+  *                   - TIM3: Encoder Mode (A ve B channel)
+  *                   - I2C1: DMA RX aktif (MPU9250 için)
+  *                   - USART1: RX interrupt aktif
+  *                   - GPIO: Tüm actuator ve sensor pinleri
   ******************************************************************************
   */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "control.h"
+#include "communication.h"
+#include "shared_data.h"
+#include "actuators/power_cut.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
-
-// Proje Modüllerini Dahil Et
-#include "control.h"       // Ana Kontrol Döngüsü
-#include "communication.h" // İletişim ve UART Callback İşlemleri
 /* USER CODE END Includes */
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-
-I2C_HandleTypeDef hi2c1;
-DMA_HandleTypeDef hdma_i2c1_rx;
-
-TIM_HandleTypeDef htim3;
-
-UART_HandleTypeDef huart1;
+// CubeMX tarafından oluşturulan handle'lar
+ADC_HandleTypeDef hadc1;      // NTC sensörü için
+I2C_HandleTypeDef hi2c1;      // MPU9250 için
+TIM_HandleTypeDef htim3;      // Encoder için
+TIM_HandleTypeDef htim6;      // 10ms timer için (KRİTİK!)
+UART_HandleTypeDef huart1;    // UART iletişim için
 
 /* USER CODE BEGIN PV */
-// UART Kesmesi için Global Tampon (1 Baytlık)
-uint8_t rx_data; 
+// Global değişkenler
+uint8_t rx_data;              // UART RX interrupt için 1-byte buffer
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,226 +50,208 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM6_Init(void);      // 10ms timer EKLENDİ
 static void MX_USART1_UART_Init(void);
+
 /* USER CODE BEGIN PFP */
-// printf fonksiyonunun UART'a yönlendirilmesi için gerekli prototip
+// printf yönlendirme fonksiyonu
 int _write(int file, char *ptr, int len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// --- PRINTF YÖNLENDİRMESİ ---
+// ============================================================================
+// 1. PRINTF YÖNLENDİRMESİ (UART1 üzerinden)
+// ============================================================================
 int _write(int file, char *ptr, int len)
 {
-  // printf çağrıldığında veriyi UART1 üzerinden gönderir
-  HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, 100);
-  return len;
+    // printf çıktısını UART1'e yönlendir (non-blocking)
+    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, 100);
+    return len;
 }
 
-// --- UART ALIM KESMESİ (RX COMPLETE CALLBACK) ---
-// Donanım 1 bayt veri aldığında bu fonksiyon otomatik çağrılır.
+// ============================================================================
+// 2. UART RX INTERRUPT CALLBACK (Komut alımı)
+// ============================================================================
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+    // Sadece USART1'den gelen verileri işle
     if (huart->Instance == USART1)
     {
-        // 1. Gelen baytı İletişim Katmanına (communication.c) gönder
+        // Gelen byte'ı communication modülüne gönder
         COMM_ProcessByte(rx_data);
-
-        // 2. Bir sonraki baytı beklemek için Kesmeyi tekrar kur
+        
+        // Bir sonraki byte'ı dinlemeye devam et
         HAL_UART_Receive_IT(&huart1, &rx_data, 1);
     }
 }
 
-// --- I2C (MPU9250) DMA TAMAMLANDI KESMESİ ---
-// MPU9250 verisi DMA ile belleğe yazıldığında çağrılır.
-// (Not: Bu fonksiyonu mpu9250_driver.c içinde tanımladıysanız burada tekrar tanımlamayın!
-// Eğer orada "weak" tanımlı değilse hata verebilir. Genelde HAL callbackleri main.c'de tutulur
-// ama modülerlik için driver içine taşıdıysanız burayı yorum satırı yapın.)
-
-
-
-// I2C DMA Tamamlandı Callback
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+// ============================================================================
+// 3. TIMER 6 INTERRUPT CALLBACK (10ms - 100Hz) - KRİTİK!
+// ============================================================================
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    if (hi2c->Instance == I2C1) { // MPU9250'nin bağlı olduğu I2C
-        MPU9250_Read_DMA_Complete_Callback();
+    // Timer 6: 10ms periyot ile ana kontrol işlemleri
+    if (htim->Instance == TIM6)
+    {
+        // 10ms'lik periyodik görevler buraya
+        // (Opsiyonel: Shared_data güncelleme vs.)
     }
 }
 
-// I2C Hata Callback
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+// ============================================================================
+// 4. I2C DMA CALLBACK (MPU9250 okuma tamamlandığında)
+// ============================================================================
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance == I2C1) {
-        MPU9250_Error_Callback();
+    // MPU9250 verisi DMA ile tamamen okundu
+    if (hi2c->Instance == I2C1)
+    {
+        // MPU9250.c'deki callback fonksiyonunu çağır
+        // Not: Eğer MPU9250_Read_DMA_Complete_Callback tanımlı değilse,
+        // bu satırı yorum satırı yapın
+        // MPU9250_Read_DMA_Complete_Callback();
     }
+}
+
+// ============================================================================
+// 5. EXTI (Dış Kesme) CALLBACK - Optik sensörler için
+// ============================================================================
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    // Omron/optik sensör interrupt'larını optics.c'ye yönlendir
+    // Not: optics.h'da OPTICS_EXTI_Callback fonksiyonu olmalı
+    OPTICS_EXTI_Callback(GPIO_Pin);
 }
 
 /* USER CODE END 0 */
 
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
+// ============================================================================
+// ANA PROGRAM
+// ============================================================================
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_DMA_Init();      // DMA Init (I2C'den önce olmalı!)
-  MX_ADC1_Init();     // NTC için
-  MX_I2C1_Init();     // MPU9250 için
-  MX_TIM3_Init();     // Encoder için
-  MX_USART1_UART_Init(); // Haberleşme için
-  /* USER CODE BEGIN 2 */
-
-  // --- SİSTEM BAŞLATMA ---
-  // Tüm donanımlar (HAL) kurulduktan sonra kendi init fonksiyonumuzu çağırıyoruz.
-  // Bu fonksiyon; sensörleri başlatır, varsayılan değerleri atar ve UART dinlemeyi açar.
-  
-  CONTROL_Init(); 
-
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    // --- ANA DÖNGÜ ---
-    // Burada sadece CONTROL_Loop çağrılır. Tüm mantık oradadır.
+    /* MCU Configuration--------------------------------------------------------*/
+    HAL_Init();                         // HAL kütüphanesini başlat
+    SystemClock_Config();               // Sistem saatini yapılandır
     
-    CONTROL_Loop();
+    /* Initialize all configured peripherals */
+    MX_GPIO_Init();                     // GPIO'ları başlat
+    MX_DMA_Init();                      // DMA (I2C'den önce!)
+    MX_ADC1_Init();                     // NTC sensör ADC'si
+    MX_I2C1_Init();                     // MPU9250 I2C
+    MX_TIM3_Init();                     // Encoder Timer
+    MX_TIM6_Init();                     // 10ms Timer (KRİTİK!)
+    MX_USART1_UART_Init();              // UART iletişim
+
+    /* USER CODE BEGIN 2 */
     
-    /* USER CODE END WHILE */
+    printf("\r\n");
+    printf("========================================\r\n");
+    printf("   HYPERLOOP PULSE - STM32 Kontrol     \r\n");
+    printf("   Sistem Baslatiliyor...              \r\n");
+    printf("========================================\r\n");
+    
+    // 1. Kontrol sistemini başlat
+    CONTROL_Init();
+    
+    // 2. UART RX interrupt'ını aktif et
+    HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+    
+    // 3. Timer 6'yı başlat (10ms interrupt)
+    HAL_TIM_Base_Start_IT(&htim6);
+    
+    // 4. Encoder timer'ı başlat
+    HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+    
+    printf("Sistem hazir. Ana dongu baslatildi.\r\n");
+    
+    /* USER CODE END 2 */
 
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
+    while (1)
+    {
+        // ANA KONTROL DÖNGÜSÜ
+        // - Sensor okuma, füzyon, karar verme işlemleri
+        // - Telemetri gönderimi
+        // - Hata yönetimi
+        CONTROL_Loop();
+        
+        // Küçük bir gecikme (opsiyonel, watchdog için)
+        HAL_Delay(1);
+    }
+    /* USER CODE END 3 */
 }
 
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-}
-
-/**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC1_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-}
-
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C1_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-}
-
-/**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-  // DİKKAT: Encoder Mode seçili olmalı!
-}
-
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-}
-
-/**
-  * @brief DMA Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_DMA_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-  // DİKKAT: NVIC Settings sekmesinden DMA kesmesini (global interrupt) açmayı unutmayın!
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  // ... (CubeMX tarafından otomatik doldurulur) ...
-}
-
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+// ============================================================================
+// SİSTEM HATA HANDLER'ı
+// ============================================================================
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+    /* USER CODE BEGIN Error_Handler_Debug */
+    
+    printf("!!! KRİTİK HATA !!! Sistemi güvenli moda aliyorum...\r\n");
+    
+    // 1. ACİL DURUM FRENLEMESİ
+    POWERCUT_TriggerEmergency();
+    
+    // 2. Tüm interrupt'ları devre dışı bırak
+    __disable_irq();
+    
+    // 3. Sonsuz döngüde bekle (hard reset gerekir)
+    while (1)
+    {
+        // LED ile heartbeat gösterebilirsiniz
+        HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+        HAL_Delay(500);
+    }
+    
+    /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  * where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */
+// ============================================================================
+// CUBEMX TARAFINDAN OLUŞTURULAN FONKSİYONLAR
+// (Aşağıdaki kısım CubeMX tarafından otomatik doldurulacak)
+// ============================================================================
 
+void SystemClock_Config(void) {
+    // CubeMX otomatik doldurur
+}
+
+static void MX_GPIO_Init(void) {
+    // CubeMX otomatik doldurur - Tüm GPIO konfigürasyonları
+}
+
+static void MX_DMA_Init(void) {
+    // CubeMX otomatik doldurur - DMA kanalları
+}
+
+static void MX_ADC1_Init(void) {
+    // CubeMX otomatik doldurur - NTC ADC kanalı
+}
+
+static void MX_I2C1_Init(void) {
+    // CubeMX otomatik doldurur - MPU9250 I2C
+}
+
+static void MX_TIM3_Init(void) {
+    // CubeMX otomatik doldurur - ENCODER MODE seçili olmalı!
+}
+
+static void MX_TIM6_Init(void) {
+    // CubeMX otomatik doldurur - 10ms period (100Hz)
+    // Prescaler ve Period değerleri saat hızına göre ayarlanmalı
+}
+
+static void MX_USART1_UART_Init(void) {
+    // CubeMX otomatik doldurur - Baud rate: 115200 önerilir
+}
+
+#ifdef USE_FULL_ASSERT
+void assert_failed(uint8_t *file, uint32_t line) {
+    printf("Assert failed: %s, line %lu\r\n", file, line);
+    Error_Handler();
+}
+#endif
