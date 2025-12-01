@@ -2,54 +2,58 @@
 #include <fstream>
 #include <iostream>
 
-// dosya kontrolu
+// Dosya varlık kontrolü
 bool ConfigManager::fileExists() const {
     std::ifstream file(configFilename);
     return file.good();
 }
 
 ConfigManager::ConfigManager(const std::string& filename)
-    : configFilename(filename)  // ✅ Önce sadece filename
+    : configFilename(filename)
 {
-    // Default değerleri set et
-    name = "HermodPrototypeVehicle";
+    // 1. Önce Varsayılan (Default) Değerleri Yükle
+    // Dosya okuma başarısız olursa sistem bu değerlerle çalışır.
+    name = "Hermod_Polaris_V1";
     ipAddress = "192.168.1.100";
     port = 12345;
+    
     broadcastingAddress = "255.255.255.255";
     broadcastingPort = 12321;
-    
-    // Dosya yükleme
+
+    serialPortName = "/dev/ttyACM0"; // Linux'ta genelde budur
+    baudRate = 115200;
+
+    // 2. Dosya varsa üzerine yaz (Load), yoksa oluştur (Save)
     if (fileExists()) {
         if (!loadConfig()) {
-            std::cerr << "Uyarı: Config dosyası okunamadı, default değerler kullanılıyor" << std::endl;
+            std::cerr << "UYARI: Config dosyasi bozuk, varsayilanlar kullaniliyor." << std::endl;
+        } else {
+            std::cout << "AYARLAR: Config dosyasi yuklendi." << std::endl;
         }
     } else {
-        // Yeni dosya oluştur
-        if (!saveConfig()) {
-            throw std::runtime_error("Config dosyası oluşturulamadı: " + configFilename);
-        }
+        std::cout << "BILGI: Config dosyasi bulunamadi, varsayilan ayarlarla olusturuluyor..." << std::endl;
+        saveConfig();
     }
 }
 
 bool ConfigManager::loadConfig() {
     std::ifstream file(configFilename);
-    if (!file.is_open()) {
-        return false;
-    }
+    if (!file.is_open()) return false;
 
-    //
-    std::getline(file, name);
-    std::getline(file, ipAddress);
-
-    std::string portText = "";
-    std::getline(file, portText);
-    port = std::stoi(portText);
-
-    std::getline(file, broadcastingAddress);
+    // Satır satır okuma (Sıralama Önemli!)
+    // Dosya yapısı: Name \n IP \n Port \n BroadcastIP \n BroadcastPort \n SerialPort \n BaudRate
     
-    std::string broadcastingPortText = "";
-    std::getline(file, broadcastingPortText);
-    broadcastingPort = std::stoi(broadcastingPortText);
+    if (!std::getline(file, name)) return false;
+    if (!std::getline(file, ipAddress)) return false;
+    
+    std::string temp;
+    if (!std::getline(file, temp)) return false; port = std::stoi(temp);
+    
+    if (!std::getline(file, broadcastingAddress)) return false;
+    if (!std::getline(file, temp)) return false; broadcastingPort = std::stoi(temp);
+
+    if (!std::getline(file, serialPortName)) return false;
+    if (!std::getline(file, temp)) return false; baudRate = std::stoi(temp);
 
     file.close();
     return true;
@@ -57,63 +61,34 @@ bool ConfigManager::loadConfig() {
 
 bool ConfigManager::saveConfig() const {
     std::ofstream outfile(configFilename);
-    if (!outfile.is_open()) {
-        return false;
-    }
+    if (!outfile.is_open()) return false;
 
-    // verileri yaz
     outfile << name << std::endl;
     outfile << ipAddress << std::endl;
     outfile << port << std::endl;
-
     outfile << broadcastingAddress << std::endl;
     outfile << broadcastingPort << std::endl;
+    outfile << serialPortName << std::endl;
+    outfile << baudRate << std::endl;
 
     outfile.close();
     return true;
 }
 
-std::string ConfigManager::getName() const {
-    return name;
-}
+// --- GETTERS ---
+std::string ConfigManager::getName() const { return name; }
+std::string ConfigManager::getIPAddress() const { return ipAddress; }
+int ConfigManager::getPort() const { return port; }
+std::string ConfigManager::getBroadcastingIPAddress() const { return broadcastingAddress; }
+uint16_t ConfigManager::getBroadcastingPort() const { return broadcastingPort; }
+std::string ConfigManager::getSerialPortName() const { return serialPortName; }
+int ConfigManager::getBaudRate() const { return baudRate; }
 
-std::string ConfigManager::getIPAddress() const {
-    return ipAddress;
-}
-
-std::string ConfigManager::getBroadcastingIPAddress() const {
-    return broadcastingAddress;
-}
-
-u_int16_t ConfigManager::getBroadcastingPort() const {
-    return broadcastingPort;
-}
-
-int ConfigManager::getPort() const {
-    return port;
-}
-
-void ConfigManager::setName(const std::string& name) {
-    this->name = name;
-    saveConfig();
-}
-
-void ConfigManager::setIPAddress(const std::string& ip) {
-    ipAddress = ip;
-    saveConfig();
-}
-
-void ConfigManager::setBroadcastingIPAddress(const std::string& ip) {
-    broadcastingAddress = ip;
-    saveConfig();
-}
-
-void ConfigManager::setBroadcastingPort(const int port) {
-    broadcastingPort = port;
-    saveConfig();
-}
-
-void ConfigManager::setPort(const int port) {
-    this->port = port;
-    saveConfig();
-}
+// --- SETTERS ---
+void ConfigManager::setName(const std::string& val) { name = val; saveConfig(); }
+void ConfigManager::setIPAddress(const std::string& val) { ipAddress = val; saveConfig(); }
+void ConfigManager::setPort(const int val) { port = val; saveConfig(); }
+void ConfigManager::setBroadcastingIPAddress(const std::string& val) { broadcastingAddress = val; saveConfig(); }
+void ConfigManager::setBroadcastingPort(const int val) { broadcastingPort = val; saveConfig(); }
+void ConfigManager::setSerialPortName(const std::string& val) { serialPortName = val; saveConfig(); }
+void ConfigManager::setBaudRate(const int val) { baudRate = val; saveConfig(); }
