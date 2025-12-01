@@ -13,6 +13,7 @@ extern uint8_t rx_data;
 // timeout için 
 static uint32_t last_rx_time = 0;
 #define COMM_TIMEOUT_MS 1000
+#define MAX_FRAME 256
 
 
 // -------------------------------------------------------------------
@@ -126,19 +127,6 @@ void COMM_CheckTimeout(void)
         rx_state = RX_STATE_WAIT_START;
     }
 }
-/**
- * @brief UART Alım kesmesini başlatır. main.c'den çağrılır.
- */
-void COMM_Init(void)
-{
-    if (HAL_UART_Receive_IT(&huart1, &rx_data, 1) != HAL_OK)
-    {
-      g_system_state.error_flags |= ERR_FLAG_COMM_TIMEOUT;
-      Error_Handler();
-    }
-    printf("UART Haberlesme Baslatildi. Komut Bekleniyor...\r\n");
-}
-
 
 // -------------------------------------------------------------------
 // --- GÖNDERİCİ FONKSİYONU ---
