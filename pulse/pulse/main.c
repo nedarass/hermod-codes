@@ -23,6 +23,8 @@
 #include "communication.h"
 #include "shared_data.h"
 #include "actuators/power_cut.h"
+#include "control/commands.h" // EmergencyStop için
+#include "sensors/optics.h" // EXTI Callback için
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -79,6 +81,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     // Sadece USART1'den gelen verileri işle
     if (huart->Instance == USART1)
     {
+       // communication.c içindeki extern değişkene eriş
+        extern uint8_t rx_data;
         // Gelen byte'ı communication modülüne gönder
         COMM_ProcessByte(rx_data);
         
@@ -155,16 +159,7 @@ int main(void)
     
     // 1. Kontrol sistemini başlat
     CONTROL_Init();
-    
-    // 2. UART RX interrupt'ını aktif et
-    HAL_UART_Receive_IT(&huart1, &rx_data, 1);
-    
-    // 3. Timer 6'yı başlat (10ms interrupt)
-    HAL_TIM_Base_Start_IT(&htim6);
-    
-    // 4. Encoder timer'ı başlat
-    HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
-    
+
     printf("Sistem hazir. Ana dongu baslatildi.\r\n");
     
     /* USER CODE END 2 */
@@ -204,7 +199,7 @@ void Error_Handler(void)
     while (1)
     {
         // LED ile heartbeat gösterebilirsiniz
-        HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+        HAL_GPIO_TogglePin(BLINKER_GPIO_Port, BLINKER_Pin);
         HAL_Delay(500);
     }
     
