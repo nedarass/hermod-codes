@@ -39,7 +39,6 @@ void COMM_Init(void)
     if (HAL_UART_Receive_IT(&huart1, &rx_data, 1) != HAL_OK)
     {
        shared_data.system.error_flags |= ERR_FLAG_COMM_TIMEOUT;
-       Error_Handler();
     }
     printf("UART Haberlesme Baslatildi.\r\n");
 }
