@@ -1,22 +1,50 @@
 #include "../include/serial_manager.h"
 #include <iostream>
-#include <cstring> // memcpy, memset
-#include <algorithm> // erase
+#include <cstring>   // memcpy
+#include <algorithm> // std::find
+#include <vector>
+#include <iomanip>   // Debug için hex formatı
 
+// Linux Serial Port Kütüphaneleri
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+
+// --- YARDIMCI FONKSİYON: CRC HESAPLAMA ---
+// STM32 tarafındaki (communication.c) algoritmanın aynısıdır.
+static uint16_t CalculateCRC(const uint8_t *data, int len) {
+    uint16_t crc = 0xFFFF;
+    for (int i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int j = 0; j < 8; j++) {
+            if (crc & 0x8000) 
+                crc = (crc << 1) ^ 0x1021;
+            else 
+                crc <<= 1;
+        }
+    }
+    return crc;
+}
+
+// --- CONSTRUCTOR ---
 SerialManager::SerialManager(const std::string& portName, int baudRate)
     : portName(portName), baudRate(baudRate), serialFd(-1) {
 }
 
+// --- DESTRUCTOR ---
 SerialManager::~SerialManager() {
     closeSerial();
 }
 
+// --- PORT AÇMA VE AYARLAMA ---
 bool SerialManager::openSerial() {
-    // Dosyayı aç (Read/Write, No controlling terminal, Non-blocking)
+    // O_RDWR: Oku/Yaz
+    // O_NOCTTY: Terminal olarak atama
+    // O_NDELAY: Non-blocking (Veri yoksa bekleme, hemen dön)
     serialFd = open(portName.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     
     if (serialFd == -1) {
-        std::perror("SerialManager: Port açılamadı");
+        std::perror("SerialManager: Port acilamadi");
         return false;
     }
 
@@ -24,8 +52,14 @@ bool SerialManager::openSerial() {
     struct termios options;
     tcgetattr(serialFd, &options);
 
-    // Baud Rate ayarla
-    speed_t baud = getBaudRateConst(baudRate);
+    // Baud Rate Ayarla (Genelde B115200 kullanılır)
+    speed_t baud;
+    switch (baudRate) {
+        case 9600: baud = B9600; break;
+        case 115200: baud = B115200; break;
+        case 230400: baud = B230400; break;
+        default: baud = B115200; break;
+    }
     cfsetispeed(&options, baud);
     cfsetospeed(&options, baud);
 
@@ -35,20 +69,20 @@ bool SerialManager::openSerial() {
     options.c_cflag &= ~CSIZE;  // Maskeyi temizle
     options.c_cflag |= CS8;     // 8 Data bits
 
-    // Raw Mode (Binary veri için şart)
-    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-    options.c_oflag &= ~OPOST;
-
+    // Raw Mode (Binary veri için şart - yoksa Linux karakterleri değiştirir)
+    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // Canonical mode kapa
+    options.c_oflag &= ~OPOST; // Output processing kapa
+    
     // Ayarları uygula
     tcsetattr(serialFd, TCSANOW, &options);
     
-    // Blocking davranışını düzelt (Read hemen dönsün)
-    fcntl(serialFd, F_SETFL, 0);
+    // Non-blocking okuma ayarını kesinleştir
+    fcntl(serialFd, F_SETFL, O_NONBLOCK);
 
-    std::cout << "SerialManager: Bağlantı kuruldu -> " << portName << std::endl;
     return true;
 }
 
+// --- PORT KAPATMA ---
 void SerialManager::closeSerial() {
     if (serialFd != -1) {
         close(serialFd);
@@ -56,121 +90,98 @@ void SerialManager::closeSerial() {
     }
 }
 
+// --- VERİ OKUMA VE AYRIŞTIRMA (PARSER) ---
+// Bu fonksiyon döngü içinde sürekli çağrılır.
 std::string SerialManager::readAndParse() {
     if (serialFd == -1) return "";
 
+    // 1. Porttan gelen veriyi oku
     uint8_t tempBuf[256];
-    // Porttan oku
     int bytesRead = read(serialFd, tempBuf, sizeof(tempBuf));
 
     if (bytesRead > 0) {
-        // Okunanları ana tampona ekle
+        // Okunan veriyi ana tampona (Vector) ekle
         rxBuffer.insert(rxBuffer.end(), tempBuf, tempBuf + bytesRead);
     }
 
-    // --- PARSER (AYRIŞTIRICI) ---
-    // Protokol: [AA] [ID] [TYPE] [PAYLOAD...] [55]
+    // 2. Tamponda anlamlı paket var mı diye bak
+    // Protokol: [AA] [ID] [TYPE] [LEN_L] [LEN_H] [PAYLOAD...] [CRC_L] [CRC_H] [55]
+    // En küçük paket (Payloadsız): 1+1+1+2+0+2+1 = 8 Byte
     
-    while (rxBuffer.size() >= 4) { // En küçük paket 4 byte (Payloadsız varsayımı)
+    while (rxBuffer.size() >= 8) { 
         
-        // 1. Başlangıcı (0xAA) bul
+        // A. Başlangıç Baytını (0xAA) Bul
         auto it = std::find(rxBuffer.begin(), rxBuffer.end(), (uint8_t)PKT_START);
         
         if (it == rxBuffer.end()) {
-            // Başlangıç yoksa hepsi çöptür, temizle
-            rxBuffer.clear();
+            rxBuffer.clear(); // Hiç başlangıç yoksa hepsi çöptür
             break;
         }
-
-        // Çöp veriyi baştan sil
+        
+        // Eğer başlangıç baytı en başta değilse, öncesindeki çöpleri sil
         if (it != rxBuffer.begin()) {
             rxBuffer.erase(rxBuffer.begin(), it);
         }
 
-        // Şimdi rxBuffer[0] kesinlikle 0xAA.
-        // Yeterli veri var mı diye bakmak için TYPE'ı (rxBuffer[2]) kontrol etmemiz lazım.
-        if (rxBuffer.size() < 3) break; // Henüz TİP byte'ı gelmedi
+        // B. Uzunluk Bilgisini Oku
+        // Header boyutu (AA + ID + TYPE + LEN_L + LEN_H) = 5 byte
+        if (rxBuffer.size() < 5) break; // Header henüz tamamlanmadı, bekle
 
         uint8_t id = rxBuffer[1];
         uint8_t type = rxBuffer[2];
-        int payloadSize = 0;
+        uint16_t payloadLen = rxBuffer[3] | (rxBuffer[4] << 8);
 
-        // communication_ids.h içindeki tiplere göre boyut belirle
-        switch (type) {
-            case TYPE_U8:  payloadSize = 1; break;
-            case TYPE_I16: payloadSize = 2; break;
-            case TYPE_F32: payloadSize = 4; break;
-            default: payloadSize = 0; break; // Bilinmeyen tip
+        // Toplam Paket Boyutu = Header(5) + Payload + Footer(CRC:2 + END:1)
+        size_t totalPacketSize = 5 + payloadLen + 3;
+
+        // C. Paketin tamamı geldi mi?
+        if (rxBuffer.size() < totalPacketSize) {
+            // Paket yarım kalmış, bir sonraki read döngüsünü bekle
+            break; 
         }
 
-        int totalPacketSize = 3 + payloadSize + 1; // Header(3) + Payload + End(1)
-
-        if (rxBuffer.size() < (size_t)totalPacketSize) {
-            // Paket henüz tamamlanmadı, bekle
-            break;
-        }
-
-        // 2. Bitiş (0x55) Kontrolü
+        // D. Bitiş Baytı (0x55) Kontrolü
         if (rxBuffer[totalPacketSize - 1] != PKT_END) {
-            // Paket bozuk, ilk byte'ı sil ve tekrar dene
+            // Paket yapısı bozuk (Kayma var), ilk byte'ı sil ve tekrar dene
             rxBuffer.erase(rxBuffer.begin());
             continue;
         }
 
-        // --- GEÇERLİ PAKET YAKALANDI ---
-        std::string result = "";
+        // E. CRC (Güvenlik) Kontrolü
+        // Paketin sonundaki CRC'yi al
+        uint16_t receivedCRC = rxBuffer[totalPacketSize - 3] | (rxBuffer[totalPacketSize - 2] << 8);
         
-        // Veriyi çözümle (Binary -> Value)
-        if (type == TYPE_F32) {
-            float val;
-            // Byte array -> Float (Little Endian varsayımı - STM32 & RPi uyumlu)
-            std::memcpy(&val, &rxBuffer[3], 4);
-            result = "FLOAT:" + std::to_string(id) + ":" + std::to_string(val);
-        } 
-        else if (type == TYPE_I16) {
-            int16_t val;
-            std::memcpy(&val, &rxBuffer[3], 2);
-            result = "INT:" + std::to_string(id) + ":" + std::to_string(val);
-        }
-        else if (type == TYPE_U8) {
-            uint8_t val = rxBuffer[3];
-            result = "UINT:" + std::to_string(id) + ":" + std::to_string(val);
-        }
+        // Bizim hesapladığımız CRC (Sadece payload üzerinden, STM32'ye uyumlu)
+        const uint8_t* payloadPtr = &rxBuffer[5];
+        uint16_t calculatedCRC = CalculateCRC(payloadPtr, payloadLen);
 
-        // İşlenen paketi tampondan sil
-        rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + totalPacketSize);
-
-        // Bulunan sonucu döndür (Bifrost'a gönderilmek üzere)
-        return result; 
-    }
-
-    return ""; // Tam paket yoksa boş dön
-}
-
-bool SerialManager::sendCommand(uint8_t cmdId, uint8_t type, const void* payload, int len) {
-    if (serialFd == -1) return false;
-
-    std::vector<uint8_t> packet;
-    packet.push_back(PKT_START);
-    packet.push_back(cmdId);
-    packet.push_back(type);
-
-    const uint8_t* pData = (const uint8_t*)payload;
-    for (int i = 0; i < len; i++) {
-        packet.push_back(pData[i]);
-    }
-
-    packet.push_back(PKT_END);
-
-    int written = write(serialFd, packet.data(), packet.size());
-    return (written == (int)packet.size());
-}
-
-speed_t SerialManager::getBaudRateConst(int baud) {
-    switch (baud) {
-        case 9600: return B9600;
-        case 115200: return B115200;
-        case 230400: return B230400;
-        default: return B115200;
-    }
-}
+        if (receivedCRC == calculatedCRC) {
+            // --- PAKET DOĞRU VE GÜVENLİ ---
+            std::string result = "";
+            
+            // Veri tipine göre dönüştür ve String yap (Örn: "FLOAT:1:25.5")
+            // Bu format Bifrost (Arayüz) tarafından kolayca parse edilir.
+            
+            if (type == 0x07) { // TYPE_F32 (Float)
+                float val;
+                std::memcpy(&val, payloadPtr, 4);
+                result = "FLOAT:" + std::to_string(id) + ":" + std::to_string(val);
+            } 
+            else if (type == 0x04) { // TYPE_I16 (Int16)
+                int16_t val;
+                std::memcpy(&val, payloadPtr, 2);
+                result = "INT:" + std::to_string(id) + ":" + std::to_string(val);
+            } 
+            else if (type == 0x01) { // TYPE_U8 (UInt8)
+                uint8_t val = payloadPtr[0];
+                result = "UINT:" + std::to_string(id) + ":" + std::to_string(val);
+            }
+            
+            // İşlenen paketi tampondan sil
+            rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + totalPacketSize);
+            
+            return result; // Bulunan paketi döndür
+        } else {
+            // CRC Hatası: Paket bozuk gelmiş
+            std::cerr << "CRC ERROR! Paket atiliyor." << std::endl;
+            rxBuffer.erase(rxBuffer.
