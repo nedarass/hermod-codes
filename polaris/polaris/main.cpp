@@ -104,10 +104,37 @@ int main()
         }
 
         // --- C. YÖN: BIFROST -> STM32 (Komutlar) ---
-        // TCP'den gelen veriyi oku (Bifrost komutları)
-        // Not: tcp_server non-blocking olmalı veya burada veri kontrolü yapılmalı.
-        // Eğer receiveData() blocking ise bu döngüyü kilitler.
-        // Şimdilik sadece PING mekanizmasını çalıştırıyoruz.
+        if (tcpServer.hasData()) {
+        std::string command = tcpServer.receiveData();
+        std::cout << "[BIFROST] Komut: " << command << std::endl;
+        
+        // Basit parsing (Bifrost'tan gelen format: "BRAKE 50")
+        if (command.find("BRAKE ") == 0) {  // "BRAKE " ile başlıyorsa
+            std::string valueStr = command.substr(6); // "50"
+            int brakeValue = std::stoi(valueStr);
+            if (brakeValue > 100) brakeValue = 100;
+            if (brakeValue < 0) brakeValue = 0;
+            
+            uint8_t payload = static_cast<uint8_t>(brakeValue);
+            pulseSerial.sendCommand(0xA1, 0x01, &payload, 1); // CMD_BRAKE_ACTUATE
+            
+            std::cout << "[POLARIS] Fren: %" << brakeValue << " -> STM32" << std::endl;
+        }
+        else if (command.find("SPEED ") == 0) {
+            float speedValue = std::stof(command.substr(6));
+            pulseSerial.sendCommand(0xA2, 0x07, &speedValue, 4); // CMD_SET_TARGET_SPEED
+            
+            std::cout << "[POLARIS] Hiz: " << speedValue << " m/s -> STM32" << std::endl;
+        }
+        else if (command == "POWER_CUT") {
+            pulseSerial.sendCommand(0xA3, 0x00, nullptr, 0); // CMD_POWER_CUT_OFF
+            std::cout << "[POLARIS] ACIL GUC KESME -> STM32" << std::endl;
+        }
+        else if (command == "PING") {
+            tcpServer.sendData("PONG"); // Ping'e cevap ver
+        }
+    }
+    
 
         // --- D. Periyodik Ping ---
         auto now = std::chrono::steady_clock::now();
