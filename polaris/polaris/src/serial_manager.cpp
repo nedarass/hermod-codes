@@ -145,6 +145,13 @@ std::string SerialManager::readAndParse() {
             // Paket yapısı bozuk (Kayma var), ilk byte'ı sil ve tekrar dene
             rxBuffer.erase(rxBuffer.begin());
             continue;
+        }else if (type == 0xFF) { // TYPE_BIN (binary data)
+            // Hata bayrakları için
+            uint32_t val;
+            if (payloadLen >= 4) {
+                memcpy(&val, payloadPtr, 4);
+                result = "BIN:" + std::to_string(id) + ":" + std::to_string(val);
+            }
         }
 
         // E. CRC (Güvenlik) Kontrolü
