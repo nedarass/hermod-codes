@@ -30,6 +30,14 @@ signals:
     // Polaris'ten gelen veriyi (JSON/String) QML'e iletir
     void messageReceived(const QString &message); 
     void errorOccurred(QString errorMsg);
+    // --- TELEMETRİ SİNYALLERİ (QML Arayüzü İçin) ---
+    // Bu sinyaller parse edilen verileri taşır
+    void speedUpdated(float speed);       // ID 1
+    void positionUpdated(float position); // ID 3
+    void voltageUpdated(float voltage);   // ID 4
+    void temperatureUpdated(float temp);  // ID 7
+    void brakeStatusChanged(bool engaged);// ID 8
+    void errorFlagsUpdated(int flags);    // ID 243 (0xF3)
 
 private slots:
     void onConnected();
@@ -39,6 +47,8 @@ private slots:
 
 private:
     QTcpSocket *socket;
+    // Gelen metni ("FLOAT:1:25.5") parçalayan fonksiyon
+    void processIncomingData(const QString &data);
 };
 
 #endif // TCPCLIENT_H
