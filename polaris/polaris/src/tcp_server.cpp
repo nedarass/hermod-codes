@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "../include/tcp_server.h"
+#include <sys/select.h>
 
 TCPServer::TCPServer(int port) : port(port), server_fd(-1), client_fd(-1){}
 
@@ -40,6 +41,30 @@ bool TCPServer::start() {
     
     std::cout << "Sunucu calisiyor (TCP): " << port << std::endl;
     return true;
+}
+
+bool TCPServer::hasData() {
+    if (client_fd == -1) return false;
+    
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(client_fd, &readfds);
+    
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0; // Non-blocking
+    
+    int result = select(client_fd + 1, &readfds, NULL, NULL, &timeout);
+    
+    if (result > 0) {
+        return true; // Veri var
+    } else if (result == 0) {
+        return false; // Veri yok
+    } else {
+        // Hata
+        perror("select() error");
+        return false;
+    }
 }
 
 bool TCPServer::acceptClient() {
