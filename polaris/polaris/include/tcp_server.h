@@ -18,6 +18,7 @@ public:
     std::string receiveData();
     void sendData(const std::string& data);
     void closeServer();
+    bool hasData();
     
     // ✅ PING-PONG TCP SERVER'IN GÖREVİ
     void sendPing();
