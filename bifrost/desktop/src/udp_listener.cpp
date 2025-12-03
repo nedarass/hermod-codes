@@ -10,11 +10,12 @@ UDPListener::~UDPListener() {
 }
 
 void UDPListener::startListening() {
-    if (udpSocket->bind(QHostAddress::Any, port)) {
+    // ShareAddress: Aynı portu birden fazla uygulama dinleyebilsin diye
+    if (udpSocket->bind(QHostAddress::Any, port, QUdpSocket::ShareAddress)) {
         connect(udpSocket, &QUdpSocket::readyRead, this, &UDPListener::processPendingDatagrams);
-        qDebug() << "UDP Listener started on port:" << port;
+        qDebug() << "UDP Listener basladi. Port:" << port;
     } else {
-        qWarning() << "Failed to bind UDP port:" << port;
+        qWarning() << "UDP Port acilamadi:" << port;
     }
 }
 
@@ -23,6 +24,10 @@ void UDPListener::stopListening() {
         udpSocket->close();
         qDebug() << "UDP Listener stopped.";
     }
+}
+
+void UDPListener::setTCPClient(TCPClient *client) {
+    this->tcpClient = client;
 }
 
 void UDPListener::processPendingDatagrams() {
@@ -36,26 +41,33 @@ void UDPListener::processPendingDatagrams() {
 
         QString message = QString::fromUtf8(datagram);
 
+        // Mesaj Formatı: "hermod-polaris-broadcast\nNAME\nIP:PORT"
         QStringList mList = message.split("\n");
-        
-        QString identifier = mList[0];
-        QString vehicle_name = mList[1];
+        if (mList.size() < 3) return; // Hatalı mesaj
+
+        // 1. Güvenlik Kontrolü: Bizim araç mı?
+        if (mList[0] != "hermod-polaris-broadcast") return;
+
+        // 2. IP ve Portu Al
         QStringList ip_port = mList[2].split(":");
+        if (ip_port.size() < 2) return;
 
-        qDebug() << "Received UDP Message from" << sender.toString() << ":" << ip_port[0] << "-" << ip_port[1];
+        QString targetIP = ip_port[0];
+        int targetPort = ip_port[1].toInt();
 
-        QMetaObject::invokeMethod(
-            tcpClient,          // Pointer to QObject instance
-            "connectToServer",    // Name of the method as a string
-            Qt::AutoConnection, // Connection type (optional)
-            Q_ARG(QString, ip_port[0]),  // Argument 1
-            Q_ARG(int, ip_port[1].toInt())   // Argument 2 (if any)
-        );
-
+        // 3. Otomatik Bağlanma (Sadece bağlı değilsek!)
+        if (tcpClient && !tcpClient->isConnected()) {
+            qDebug() << "Polaris Bulundu:" << targetIP << ":" << targetPort;
+            
+            // GUI Thread'inde güvenli çağrı
+            QMetaObject::invokeMethod(tcpClient, "connectToServer", 
+                                      Qt::AutoConnection, 
+                                      Q_ARG(QString, targetIP), 
+                                      Q_ARG(int, targetPort));
+        }
+        
         emit receivedMessage(message);
     }
 }
 
-void UDPListener::setTCPClient(TCPClient *client){
-    this->tcpClient = client;
-}
+
