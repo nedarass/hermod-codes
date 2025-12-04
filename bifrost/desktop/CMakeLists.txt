@@ -35,6 +35,10 @@ qt_add_qml_module(appdesktop
         RESOURCES
 QML_FILES
 QML_FILES ui/views/NavigationMediator.qml
+#---speedgauge ve positionbar---
+QML_FILES ui/views/SpeedGauge.qml
+QML_FILES ui/views/PositionBar.qml
+# ---------------------------------------------
 QML_FILES ui/pages/ManuelControlPage.qml
 QML_FILES ui/pages/HermodPulsePage.qml
 SOURCES include/udp_listener.h
