@@ -78,6 +78,51 @@ Item {
             }
         }
     }
+/*
+// ---------------------------------------------
+    // SPEED GAUGE + POSITION BAR (üst orta)
+    // ---------------------------------------------
+    Column {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 40
+        spacing: 30
+
+        // -------- SPEED GAUGE --------
+        SpeedGauge {
+            id: speedGauge
+            width: 200
+            height: 200
+            maxSpeed: 250
+
+            // Test animasyonu
+            SequentialAnimation on speed {
+                running: true
+                loops: Animation.Infinite
+                NumberAnimation { from: 0; to: 200; duration: 4000 }
+                NumberAnimation { from: 200; to: 0; duration: 4000 }
+            }
+        }
+
+        // -------- POSITION BAR --------
+        PositionBar {
+            id: positionBar
+            width: 700
+            height: 80
+            totalLength: 200
+
+            SequentialAnimation on currentPosition {
+                running: true
+                loops: Animation.Infinite
+
+                NumberAnimation { from: 0; to: 150; duration: 4000 }
+                NumberAnimation { from: 150; to: 200; duration: 2000 }
+                PauseAnimation { duration: 800 }
+                PropertyAction { target: positionBar; property: "currentPosition"; value: 0 }
+            }
+        }
+    }
+/*
 
             // ----- Termometre -------
             Rectangle {
