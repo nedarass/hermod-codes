@@ -43,16 +43,16 @@ void TCPClient::sendMessage(const QString &message) {
 
 // --- KOMUT FONKSİYONLARI ---
 void TCPClient::sendBrakeCommand(int force) {
-    // Polaris formatı: CMD:161:50
-    sendMessage(QString("CMD:161:%1").arg(force));
+    // Polaris "BRAKE 50" bekliyor
+    sendMessage(QString("BRAKE %1").arg(force));
 }
 
 void TCPClient::sendTargetSpeedCommand(float speed) {
-    sendMessage(QString("CMD:162:%1").arg(speed));
+    sendMessage(QString("SPEED %1").arg(speed)); 
 }
 
 void TCPClient::sendPowerCutCommand() {
-    sendMessage("CMD:163:0");
+    sendMessage("POWER_CUT");
 }
 
 // --- SLOTLAR ---
