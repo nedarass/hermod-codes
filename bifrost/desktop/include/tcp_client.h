@@ -37,6 +37,9 @@ signals:
     void brakeStatusChanged(bool engaged);
     void errorFlagsUpdated(int flags);
     void messageReceived(const QString &msg);
+    void accelerationUpdated(float accel);  
+    void currentUpdated(float current);    
+    void powerUpdated(float power);         
 
 private slots:
     void onConnected();
