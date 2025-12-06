@@ -4,51 +4,53 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QAbstractSocket>
+#include <QByteArray>
+#include "communication_ids.h" // <--- EKLENDİ
 
 class TCPClient : public QObject {
     Q_OBJECT
-    // QML tarafında bağlantı durumunu görmek için property
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY connectionChanged)
 
 public:
     explicit TCPClient(QObject *parent = nullptr);
     ~TCPClient();
 
-    // Polaris'e bağlanmak için (IP ve Port Config'den veya UDP'den gelir)
     Q_INVOKABLE void connectToServer(QString host, int port);
-    
-    // Polaris'e veri göndermek için (Örn: Komutlar)
-    Q_INVOKABLE void sendMessage(const QString &message);
-    
-    // Bağlantıyı kes
     Q_INVOKABLE void disconnectFromServer();
-
     bool isConnected() const;
+
+    // Komutlar
+    Q_INVOKABLE void sendBrakeCommand(quint8 force);
+    Q_INVOKABLE void sendTargetSpeedCommand(float speed);
+    Q_INVOKABLE void sendPowerCutCommand();
+    Q_INVOKABLE void sendPingRequest();
 
 signals:
     void connectionChanged(bool connected);
-    // Polaris'ten gelen veriyi (JSON/String) QML'e iletir
-    void messageReceived(const QString &message); 
     void errorOccurred(QString errorMsg);
-    // --- TELEMETRİ SİNYALLERİ (QML Arayüzü İçin) ---
-    // Bu sinyaller parse edilen verileri taşır
-    void speedUpdated(float speed);       // ID 1
-    void positionUpdated(float position); // ID 3
-    void voltageUpdated(float voltage);   // ID 4
-    void temperatureUpdated(float temp);  // ID 7
-    void brakeStatusChanged(bool engaged);// ID 8
-    void errorFlagsUpdated(int flags);    // ID 243 (0xF3)
+    
+    // Telemetri Sinyalleri
+    void speedUpdated(float speed);
+    void positionUpdated(float position);
+    void voltageUpdated(float voltage);
+    void temperatureUpdated(float temp);
+    void brakeStatusChanged(bool engaged);
+    void errorFlagsUpdated(int flags);
+    void messageReceived(const QString &msg);
 
 private slots:
     void onConnected();
     void onDisconnected();
-    void onReadyRead(); // Yeni veri geldiğinde çalışır
+    void onReadyRead(); // Binary okuma
     void onError(QAbstractSocket::SocketError socketError);
 
 private:
     QTcpSocket *socket;
-    // Gelen metni ("FLOAT:1:25.5") parçalayan fonksiyon
-    void processIncomingData(const QString &data);
+    QByteArray buffer;
+
+    void parseFrame(const QByteArray &frame);
+    quint8 calculateCRC(const QByteArray &data);
+    void sendCommandPacket(quint8 id, quint8 type, const QByteArray &payload);
 };
 
-#endif // TCPCLIENT_H
+#endif
