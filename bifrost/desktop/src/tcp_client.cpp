@@ -1,14 +1,12 @@
 #include "../include/tcp_client.h"
 #include <QDebug>
+#include <QtEndian> 
 
 TCPClient::TCPClient(QObject *parent) : QObject(parent) {
     socket = new QTcpSocket(this);
-
     connect(socket, &QTcpSocket::connected, this, &TCPClient::onConnected);
     connect(socket, &QTcpSocket::disconnected, this, &TCPClient::onDisconnected);
     connect(socket, &QTcpSocket::readyRead, this, &TCPClient::onReadyRead);
-
-    // Hata yakalama (Qt5/Qt6 uyumlu syntax)
     connect(socket, static_cast<void(QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
             this, &TCPClient::onError);
 }
@@ -17,12 +15,9 @@ TCPClient::~TCPClient() {
     if (socket->isOpen()) socket->close();
 }
 
-// --- BAĞLANTI ---
 void TCPClient::connectToServer(QString host, int port) {
     if (socket->state() == QAbstractSocket::ConnectedState) return;
-
-    qDebug() << "Baglaniyor:" << host << ":" << port;
-    socket->abort(); // Varsa eski işlemi iptal et
+    socket->abort();
     socket->connectToHost(host, port);
 }
 
@@ -34,97 +29,120 @@ bool TCPClient::isConnected() const {
     return socket->state() == QAbstractSocket::ConnectedState;
 }
 
-// --- VERİ GÖNDERME ---
-void TCPClient::sendMessage(const QString &message) {
-    if (!isConnected()) return;
-    socket->write(message.toUtf8());
-    socket->flush();
-}
-
-// --- KOMUT FONKSİYONLARI ---
-void TCPClient::sendBrakeCommand(int force) {
-    // Polaris "BRAKE 50" bekliyor
-    sendMessage(QString("BRAKE %1").arg(force));
-}
-
-void TCPClient::sendTargetSpeedCommand(float speed) {
-    sendMessage(QString("SPEED %1").arg(speed)); 
-}
-
-void TCPClient::sendPowerCutCommand() {
-    sendMessage("POWER_CUT");
-}
-
-// --- SLOTLAR ---
-void TCPClient::onConnected() {
-    qDebug() << "Sunucuya baglandi!";
-    emit connectionChanged(true);
-}
-
-void TCPClient::onDisconnected() {
-    qDebug() << "Baglanti kesildi!";
-    emit connectionChanged(false);
-}
-
-void TCPClient::onError(QAbstractSocket::SocketError socketError) {
-    Q_UNUSED(socketError);
-    emit errorOccurred(socket->errorString());
-}
-
-// --- VERİ ALMA VE PARSE ETME ---
+// --- FİNAL BINARY OKUMA MANTIĞI ---
 void TCPClient::onReadyRead() {
-    // Polaris satır sonu (\n) ile veri gönderir.
-    // canReadLine() tam bir satır gelip gelmediğini kontrol eder.
-    while (socket->canReadLine()) {
-        QString line = QString::fromUtf8(socket->readLine()).trimmed(); // \n temizle
-        if (!line.isEmpty()) {
-            processIncomingData(line);
+    buffer.append(socket->readAll());
+
+    // Paket: [AA][55][ID][LEN][...DATA...][CRC]
+    while (buffer.size() >= 6) {
+        
+        // Header (AA 55) kontrolü
+        if ((quint8)buffer[0] != PKT_START || (quint8)buffer[1] != PKT_END) {
+             // Header bozuksa 1 byte kaydırıp tekrar dene (Basit senkronizasyon)
+             buffer.remove(0, 1);
+             continue;
+        }
+
+        quint8 len = static_cast<quint8>(buffer[3]); 
+        int totalFrameSize = 4 + len + 1; // Header(2)+ID(1)+Len(1)+Data+CRC(1)
+
+        if (buffer.size() < totalFrameSize) return; // Verinin devamı bekleniyor
+
+        QByteArray frame = buffer.left(totalFrameSize);
+        buffer.remove(0, totalFrameSize);
+        
+        parseFrame(frame);
+    }
+}
+
+void TCPClient::parseFrame(const QByteArray &frame) {
+    quint8 id = static_cast<quint8>(frame[2]);
+    quint8 len = static_cast<quint8>(frame[3]);
+    QByteArray data = frame.mid(4, len);
+    quint8 receivedCrc = static_cast<quint8>(frame[4 + len]);
+
+    if (calculateCRC(frame.left(4 + len)) != receivedCrc) {
+        return; // CRC Hatası
+    }
+
+    // communication_ids.h içindeki ID'leri kullanıyoruz
+    switch (id) {
+        case ID_VELOCITY: {
+            quint16 raw = qFromLittleEndian<quint16>(data);
+            emit speedUpdated(raw / 100.0f);
+            break;
+        }
+        case ID_POSITION: {
+            float pos;
+            memcpy(&pos, data.constData(), sizeof(float));
+            emit positionUpdated(pos);
+            break;
+        }
+        case ID_VOLTAGE: {
+            quint16 raw = qFromLittleEndian<quint16>(data);
+            emit voltageUpdated(raw / 100.0f);
+            break;
+        }
+        case ID_TEMPERATURE_NTC1: { 
+            qint16 raw = qFromLittleEndian<qint16>(data);
+            emit temperatureUpdated(raw / 100.0f);
+            break;
+        }
+        case ID_BRAKE_STATUS: {
+            bool engaged = static_cast<bool>(data[0]);
+            emit brakeStatusChanged(engaged);
+            break;
+        }
+        case ID_ERROR_FLAG: { 
+            quint32 flags = qFromLittleEndian<quint32>(data);
+            emit errorFlagsUpdated(flags);
+            break;
         }
     }
 }
 
-void TCPClient::processIncomingData(const QString &data) {
-    // 1. Ping/Pong Kontrolü
-    if (data == "PING") { sendMessage("PONG"); return; }
-    if (data == "PONG") return;
+void TCPClient::sendCommandPacket(quint8 id, quint8 type, const QByteArray &payload) {
+    if (!isConnected()) return;
 
-    // 2. Veriyi Parçala (Format: TYPE:ID:VALUE)
-    QStringList parts = data.split(":");
-    if (parts.size() < 3) return; // Hatalı paket
+    QByteArray frame;
+    frame.append(static_cast<char>(PKT_START)); 
+    frame.append(static_cast<char>(PKT_END));   
+    frame.append(static_cast<char>(id));
+    frame.append(static_cast<char>(payload.size()));
+    frame.append(payload);
+    frame.append(calculateCRC(frame));
 
-    // parts[0] = TYPE (FLOAT, INT, UINT) - Şu an kullanmıyoruz, ID yeterli
-    bool ok;
-    int id = parts[1].toInt(&ok);
-    if (!ok) return;
-    
-    QString valueStr = parts[2];
-
-    // 3. ID'ye Göre Sinyal Yay
-    // Bu ID'ler communication_ids.h ile aynı olmalı!
-    switch (id) {
-        case 1: // Hız (ID_VELOCITY)
-            emit speedUpdated(valueStr.toFloat());
-            break;
-        case 3: // Konum (ID_POSITION)
-            emit positionUpdated(valueStr.toFloat());
-            break;
-        case 4: // Voltaj (ID_VOLTAGE)
-            emit voltageUpdated(valueStr.toFloat());
-            break;
-        case 7: // Sıcaklık (ID_TEMPERATURE_NTC1)
-            emit temperatureUpdated(valueStr.toFloat());
-            break;
-        case 8: // Fren Durumu (ID_BRAKE_STATUS)
-            emit brakeStatusChanged(valueStr.toInt() > 0);
-            break;
-        case 243: // Hata Bayrakları (ID_ERROR_FLAG = 0xF3)
-            emit errorFlagsUpdated(valueStr.toInt());
-            break;
-        default:
-            // qDebug() << "Bilinmeyen ID:" << id;
-            break;
-    }
-    
-    // Ham veriyi de log için gönder
-    emit messageReceived(data);
+    socket->write(frame);
+    socket->flush();
 }
+
+void TCPClient::sendBrakeCommand(quint8 force) {
+    QByteArray payload;
+    payload.append(static_cast<char>(force));
+    sendCommandPacket(CMD_BRAKE_ACTUATE, TYPE_U8, payload);
+}
+
+void TCPClient::sendTargetSpeedCommand(float speed) {
+    QByteArray payload;
+    payload.resize(sizeof(float));
+    memcpy(payload.data(), &speed, sizeof(float));
+    sendCommandPacket(CMD_SET_TARGET_SPEED, TYPE_F32, payload);
+}
+
+void TCPClient::sendPowerCutCommand() {
+    sendCommandPacket(CMD_POWER_CUT_OFF, 0x00, QByteArray());
+}
+
+void TCPClient::sendPingRequest() {
+    sendCommandPacket(CMD_PING_REQUEST, 0x00, QByteArray());
+}
+
+quint8 TCPClient::calculateCRC(const QByteArray &data) {
+    quint8 crc = 0;
+    for (char byte : data) crc ^= static_cast<quint8>(byte);
+    return crc;
+}
+
+void TCPClient::onConnected() { emit connectionChanged(true); buffer.clear(); }
+void TCPClient::onDisconnected() { emit connectionChanged(false); }
+void TCPClient::onError(QAbstractSocket::SocketError) { emit errorOccurred(socket->errorString()); }
