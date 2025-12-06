@@ -98,6 +98,18 @@ void TCPClient::parseFrame(const QByteArray &frame) {
             emit errorFlagsUpdated(flags);
             break;
         }
+        case ID_ACCELERATION: { // 0x02
+            emit accelerationUpdated(raw / 100.0f);
+            break;
+       }
+        case ID_CURRENT: { // 0x05
+            emit currentUpdated(raw / 100.0f);
+            break;
+        }
+        case ID_POWER: { // 0x06
+            emit powerUpdated(pwr);
+            break;
+        }
     }
 }
 
