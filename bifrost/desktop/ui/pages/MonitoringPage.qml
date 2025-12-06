@@ -1,3 +1,119 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+import "../views" // Tüm parçalar buradan geliyor
+
+Item {
+    id: monitoringPage
+    anchors.fill: parent
+
+    // --- Backend Verileri (Property'ler) ---
+    property real sysSpeed: 0
+    property real sysPosition: 0
+    property real sysAcceleration: 0
+    property real sysCurrent: 0
+    property real sysPower: 0
+    property real sysVoltage: 0
+    property real sysTemp: 0
+    property bool sysBrakeEngaged: false
+    property bool sysConnected: false
+
+    Rectangle {
+        anchors.fill: parent
+        color: "#0a0a0a"
+
+        // --- 1. ÜST BAR (Durum LED'leri) ---
+        Rectangle {
+            id: topBar
+            width: parent.width
+            height: 60
+            color: "#111"
+            border.bottom: 1
+            border.color: "#222"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+
+                // İletişim LED'i
+                ConnectionLed {
+                    label: "SYSTEM LINK"
+                    active: sysConnected
+                }
+
+                Item { Layout.fillWidth: true } // Boşluk
+
+                Text {
+                    text: "HYPERLOOP TELEMETRY"
+                    color: "white"
+                    font.bold: true
+                    font.pixelSize: 18
+                    font.letterSpacing: 2
+                }
+
+                Item { Layout.fillWidth: true } // Boşluk
+
+                // Fren LED'i
+                BrakeLed {
+                    engaged: sysBrakeEngaged
+                }
+            }
+        }
+
+        // --- 2. ANA PANEL ---
+        Item {
+            anchors.top: topBar.bottom
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 20
+
+            // SOL: Güç Göstergeleri
+            PowerStats {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                current: sysCurrent
+                power: sysPower
+                voltage: sysVoltage
+            }
+
+            // ORTA: Sürüş Verileri (Hız, İvme, Konum)
+            Column {
+                anchors.centerIn: parent
+                spacing: 40
+
+                SpeedGauge {
+                    width: 280
+                    height: 280
+                    speed: sysSpeed
+                    maxSpeed: 400
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                AccelerationDisplay {
+                    acceleration: sysAcceleration
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                PositionBar {
+                    width: 600
+                    height: 60
+                    currentPosition: sysPosition
+                    totalLength: 2000
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+            }
+
+            // SAĞ: Sıcaklık Göstergesi
+            ThermometerGauge {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                temperature: sysTemp
+            }
+        }
+    }
+}
 // ui/pages/MonitoringPage.qml
 /* import QtQuick 2.15
 import QtQuick.Controls 2.15
