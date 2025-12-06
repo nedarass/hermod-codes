@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <cstring>
 
 int main()
 {
@@ -94,53 +95,90 @@ int main()
         // --- B. YÖN: STM32 -> BIFROST (Telemetri) ---
         // Seri porttan paketleri oku ve çöz
         std::string telemetry = pulseSerial.readAndParse();
-        while (!telemetry.empty()) {
-            // Gelen veri: "FLOAT:1:25.5" formatında.
-            // Bunu TCP üzerinden Arayüze gönder.
+       if (!telemetry.empty()) {
+            // Artık telemetry binary formatında değil, parse edilmiş string
+            // Örnek: "VEL:12.5", "TEMP:25.3", "BRAKE:1"
             tcpServer.sendData(telemetry + "\n");
-            
-            // Tamponda başka paket var mı?
-            telemetry = pulseSerial.readAndParse();
         }
+
 
         // --- C. YÖN: BIFROST -> STM32 (Komutlar) ---
         if (tcpServer.hasData()) {
-        std::string command = tcpServer.receiveData();
-        std::cout << "[BIFROST] Komut: " << command << std::endl;
-        
-        // Basit parsing (Bifrost'tan gelen format: "BRAKE 50")
-        if (command.find("BRAKE ") == 0) {  // "BRAKE " ile başlıyorsa
-            std::string valueStr = command.substr(6); // "50"
-            int brakeValue = std::stoi(valueStr);
-            if (brakeValue > 100) brakeValue = 100;
-            if (brakeValue < 0) brakeValue = 0;
+            std::string binaryData = tcpServer.receiveData();
             
-            uint8_t payload = static_cast<uint8_t>(brakeValue);
-            pulseSerial.sendCommand(0xA1, 0x01, &payload, 1); // CMD_BRAKE_ACTUATE
+            // Burada binaryData Bifrost'tan gelen binary frame
+            // Format: [AA][55][ID][LEN][PAYLOAD...][CRC]
             
-            std::cout << "[POLARIS] Fren: %" << brakeValue << " -> STM32" << std::endl;
-        }
-        else if (command.find("SPEED ") == 0) {
-            float speedValue = std::stof(command.substr(6));
-            pulseSerial.sendCommand(0xA2, 0x07, &speedValue, 4); // CMD_SET_TARGET_SPEED
-            
-            std::cout << "[POLARIS] Hiz: " << speedValue << " m/s -> STM32" << std::endl;
-        }
-        else if (command == "POWER_CUT") {
-            pulseSerial.sendCommand(0xA3, 0x00, nullptr, 0); // CMD_POWER_CUT_OFF
-            std::cout << "[POLARIS] ACIL GUC KESME -> STM32" << std::endl;
-        }
-        else if (command == "PING") {
-            tcpServer.sendData("PONG"); // Ping'e cevap ver
+            if (binaryData.length() >= 6) {
+                const uint8_t* data = reinterpret_cast<const uint8_t*>(binaryData.c_str());
+                 // Header kontrolü
+                if (data[0] == PKT_START && data[1] == PKT_END) {
+                    uint8_t cmdId = data[2];
+                    uint8_t payloadLen = data[3];
+                    if (binaryData.length() >= (4 + payloadLen + 1)) { // +1 for CRC
+                        const uint8_t* payload = &data[4];
+                        
+                        // CRC kontrolü (basit XOR)
+                        uint8_t crc = 0;
+                        for (int i = 0; i < 4 + payloadLen; i++) {
+                            crc ^= data[i];
+                        }
+                        
+                        uint8_t receivedCrc = data[4 + payloadLen];
+                        
+                        if (crc == receivedCrc) {
+                            // Komutu STM32'ye ilet
+                            switch (cmdId) {
+                                case CMD_BRAKE_ACTUATE: {
+                                    if (payloadLen >= 1) {
+                                        uint8_t brakeForce = payload[0];
+                                        pulseSerial.sendCommand(CMD_BRAKE_ACTUATE, TYPE_U8, &brakeForce, 1);
+                                        std::cout << "[POLARIS] Fren: %" << (int)brakeForce << " -> STM32" << std::endl;
+                                    }
+                                    break;
+                                }
+                                case CMD_SET_TARGET_SPEED: {
+                                    if (payloadLen >= 4) {
+                                        float speed;
+                                        memcpy(&speed, payload, 4);
+                                        pulseSerial.sendCommand(CMD_SET_TARGET_SPEED, TYPE_F32, &speed, 4);
+                                        std::cout << "[POLARIS] Hiz: " << speed << " m/s -> STM32" << std::endl;
+                                    }
+                                    break;
+                                }
+                                case CMD_POWER_CUT_OFF: {
+                                    pulseSerial.sendCommand(CMD_POWER_CUT_OFF, 0x00, nullptr, 0);
+                                    std::cout << "[POLARIS] ACIL GUC KESME -> STM32" << std::endl;
+                                    break;
+                                }
+                                case CMD_PING_REQUEST: {
+                                    // Ping'e cevap ver
+                                    uint16_t pingResponse = 1; // 1ms latency (simulation)
+                                    pulseSerial.sendCommand(ID_PING_RESPONSE, TYPE_I16, &pingResponse, 2);
+                                    std::cout << "[POLARIS] Ping Request -> STM32" << std::endl;
+                                    break;
+                                }
+                                default: {
+                                    std::cout << "[POLARIS] Bilinmeyen komut ID: 0x" << std::hex << (int)cmdId << std::endl;
+                                    break;
+                                }
+                            }
+                        } else {
+                            std::cerr << "[POLARIS] CRC hatasi!" << std::endl;
+                        }
+                    }
+                } else if (binaryData == "PING") {
+                    // String PING (keep-alive için)
+                    tcpServer.sendData("PONG");
+                }
+            }
         }
     }
     
 
         // --- D. Periyodik Ping ---
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastPingTime).count() >= 5) {
+       if (tcpServer.shouldSendPing()) {
             tcpServer.sendPing();
-            lastPingTime = now;
         }
 
         // CPU Tasarrufu
