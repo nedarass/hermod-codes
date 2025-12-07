@@ -3,17 +3,18 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
 
 class ConfigManager {
 public:
-    // Yapıcı fonksiyon: Dosya adını alır
+    // Yapıcı fonksiyon
     ConfigManager(const std::string& filename = "config.hcf");
 
-    // Dosyadan oku / Dosyaya yaz
+    // Dosya İşlemleri
     bool loadConfig();
     bool saveConfig() const;
 
-    // --- GETTER (Okuma) Fonksiyonları ---
+    // --- GETTER (Okuma) ---
     std::string getName() const;
     std::string getIPAddress() const;
     int getPort() const;
@@ -21,20 +22,19 @@ public:
     std::string getBroadcastingIPAddress() const;
     uint16_t getBroadcastingPort() const;
 
-    // Yeni Eklenenler (Serial)
     std::string getSerialPortName() const;
     int getBaudRate() const;
 
-    // --- SETTER (Yazma) Fonksiyonları ---
+    // --- SETTER (Yazma) - Artık Validasyonlu ---
     void setName(const std::string& name);
-    void setIPAddress(const std::string& ip);
-    void setPort(const int port);
+    bool setIPAddress(const std::string& ip);
+    bool setPort(int port);
     
-    void setBroadcastingIPAddress(const std::string& ip);
-    void setBroadcastingPort(const int port);
+    bool setBroadcastingIPAddress(const std::string& ip);
+    bool setBroadcastingPort(uint16_t port);
 
     void setSerialPortName(const std::string& portName);
-    void setBaudRate(const int baud);
+    bool setBaudRate(int baud);
 
 private:
     std::string configFilename;
@@ -47,11 +47,16 @@ private:
     std::string broadcastingAddress;
     uint16_t broadcastingPort;
 
-    std::string serialPortName; // Örn: /dev/ttyACM0
-    int baudRate;               // Örn: 115200
+    std::string serialPortName;
+    int baudRate;
 
-    // Dosya var mı kontrolü
+    // Yardımcı Fonksiyonlar
     bool fileExists() const;
+    
+    // Doğrulama (Validation) Fonksiyonları
+    bool isValidIP(const std::string& ip) const;
+    bool isValidPort(int p) const;
+    bool isValidBaudRate(int baud) const;
 };
 
-#endif
+#endif // CONFIG_MANAGER_H
