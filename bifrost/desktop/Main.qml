@@ -7,78 +7,57 @@ import "ui/pages/."
 ApplicationWindow {
     id: window
     visible: true
-    width: 850
-    height: 500
+    width: 1200
+    height: 800
     flags: Qt.FramelessWindowHint | Qt.Window
-    title: "EntryPage"
-    color: "transparent"
+    color: "black"
 
+    title: "Hermod Interface"
 
     NavigationMediator { id: navMediator }
 
     Rectangle {
-        id: background
-        anchors.fill: parent
-        color: "black"
-        border.color: "white"
-        border.width: 2
-        radius: 12
+        id: navMed
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 40
+        color: "#111"
 
-        Rectangle {
-            id: titleBar
-            anchors.left: parent.left
+        Row {
             anchors.right: parent.right
-            height: 45
-            color: "transparent"
-            radius: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            anchors.rightMargin: 8
 
-            MouseArea { anchors.fill: parent; onPressed: window.startSystemMove() }
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
-                
-                NavigationPillList {
-                    id: navigationPills
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 45
-                    opacity: 0
-                    visible: opacity > 0
-                    mediator: navMediator
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-
-                    Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
-                }
+            TitleBarRoundButton {
+                roundBackgroundColor: "white"
+                roundBorderColor: "white"
+                hoverColor: "gray"
+                onClicked: window.showNormal()
             }
 
-            Row {
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.topMargin: 10
-                anchors.rightMargin: 10
-                spacing: 5
-                
-                TitleBarRoundButton {
-                    roundBackgroundColor: "white"
-                    roundBorderColor: "white"
-                    hoverColor: "gray"
-                    onClicked: window.visibility = (window.visibility === Window.FullScreen) ? Window.Windowed : Window.FullScreen
-                }
-                TitleBarRoundButton {
-                    roundBackgroundColor: "white"
-                    roundBorderColor: "white"
-                    hoverColor: "gray"
-                    onClicked: Qt.quit()
-                }
+            TitleBarRoundButton {
+                roundBackgroundColor: "white"
+                roundBorderColor: "white"
+                hoverColor: "gray"
+                onClicked: Qt.quit()
             }
         }
+    }
 
-        StackView {
-            id: stackView
-            anchors.fill: parent
-            anchors.topMargin: titleBar.height
-            initialItem: EntryPage { mediator: navMediator }
+    StackView {
+        id: stackView
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.top: navMed.bottom
+        initialItem: EntryPage {
+            mediator: navMediator
+            stackViewRef: stackView
         }
     }
 }
+
+
+
+
