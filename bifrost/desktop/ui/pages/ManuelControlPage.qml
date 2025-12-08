@@ -25,7 +25,7 @@ Item {
             onStartClicked: {
                 console.log("Motor başlatılıyor...")
                 // TODO: VESC6 motor sürücüsüne START komutu gönderilecek
-                // vescInterface.startMotor()
+                TCPClient.sendTargetSpeedCommand(10.0) // 10 m/s ile başlat
                 statusText.text = "Motor başlatıldı"
                 statusText.color = "#4CAF50"
             }
@@ -33,7 +33,7 @@ Item {
             onStopClicked: {
                 console.log("Motor durduruluyor...")
                 // TODO: VESC6 motor sürücüsüne STOP komutu gönderilecek
-                // vescInterface.stopMotor()
+                TCPClient.sendTargetSpeedCommand(0.0)
                 statusText.text = "Motor durduruldu"
                 statusText.color = "#ff4444"
             }
@@ -46,9 +46,11 @@ Item {
                     onSpeedChanged: function(value) {
                         console.log("PWM değeri değişti: " + value + "%")
                         // TODO: VESC6 motor sürücüsüne PWM değeri gönderilecek
-                        // vescInterface.setPWM(value)
+                        // 0-100% değerini 0-50 m/s'ye çevir
+                        var speedMps = (value / 100.0) * 50.0
+                        TCPClient.sendTargetSpeedCommand(speedMps)
                         if (motorButton.motorRunning) {
-                            statusText.text = "Motor çalışıyor - Hız: " + value + "%"
+                            statusText.text = "Motor çalışıyor - Hız: " + speedMps.toFixed(1) + "%"
                         }
                     }
                 }
@@ -59,20 +61,22 @@ Item {
         BrakeButton {
             id: brakeButton
             anchors.horizontalCenter: parent.horizontalCenter
-            
+
             onBrakeEngaged: {
                 console.log("Mekanik frenler SIKILDI")
                 // Eğer motor çalışıyorsa güvenli duruş için motoru kesmek isteyebilirsin:
                 if(motorButton.motorRunning) {
                      console.log("Uyarı: Motor çalışırken fren yapıldı!")
                      // motorButton.stopClicked() // Opsiyonel: Otomatik motor durdurma
+                     TCPClient.sendBrakeCommand(100) // %100 fren
                 }
                 statusText.text = "Frenler Devrede"
                 statusText.color = "#FF9800"
             }
-            
+
             onBrakeReleased: {
                 console.log("Mekanik frenler BIRAKILDI")
+                TCPClient.sendBrakeCommand(0) // %0 fren
                 statusText.text = "Frenler Serbest"
             }
         }
@@ -85,19 +89,22 @@ Item {
         EmergencyButton {
             id: emergencyButton
             anchors.horizontalCenter: parent.horizontalCenter
-            
+
             onEmergencyStopClicked: {
                 console.log("!!! ACİL DURDURMA TETİKLENDİ !!!")
-                
+
+                // 1. ACİL GÜÇ KESME komutu gönder
+                TCPClient.sendPowerCutCommand()
+
                 // 1. Motoru anında kes
                 if(motorButton.motorRunning) {
                     motorButton.stopClicked()
                     motorButton.motorRunning = false
                 }
-                
+
                 // 2. Hızı sıfırla
                 speedSlider.speedValue = 0
-                
+
                 // 3. Frenleri kilitle
                 if(!brakeButton.brakesEngaged) {
                     brakeButton.brakesEngaged = true
@@ -108,5 +115,15 @@ Item {
                 statusText.color = "red"
             }
         }
+        // --- Durum Metni
+                Text {
+                    id: statusText
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "Hazır"
+                    color: "white"
+                    font.pixelSize: 14
+                    font.bold: true
+                    topPadding: 20
+                }
     }
 }
