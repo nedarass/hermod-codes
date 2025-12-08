@@ -18,7 +18,7 @@ Item {
             height: 10
             radius: 5
             color: root.active ? "#00ff00" : "#555"
-            
+
             // Neon Parlama Efekti
             layer.enabled: root.active
             Rectangle {
