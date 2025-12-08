@@ -49,10 +49,10 @@ Item {
                     ctx.beginPath()
                     ctx.arc(12, 12, 10, 0, Math.PI * 2) // Dış daire
                     ctx.stroke()
-                    
+
                     // Balata kısımları
                     ctx.beginPath()
-                    ctx.arc(12, 12, 6, -Math.PI/2, Math.PI/2) 
+                    ctx.arc(12, 12, 6, -Math.PI/2, Math.PI/2)
                     ctx.stroke()
                 }
                 // Durum değişince rengi güncelle
