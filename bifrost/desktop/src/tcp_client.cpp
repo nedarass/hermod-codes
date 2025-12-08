@@ -1,4 +1,6 @@
 #include "../include/tcp_client.h"
+#include <QDataStream>
+#include <QTimer>
 #include <QDebug>
 #include <QtEndian> 
 
@@ -7,8 +9,14 @@ TCPClient::TCPClient(QObject *parent) : QObject(parent) {
     connect(socket, &QTcpSocket::connected, this, &TCPClient::onConnected);
     connect(socket, &QTcpSocket::disconnected, this, &TCPClient::onDisconnected);
     connect(socket, &QTcpSocket::readyRead, this, &TCPClient::onReadyRead);
-    connect(socket, static_cast<void(QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
-            this, &TCPClient::onError);
+
+    // SADECE onError KULLAN - onSocketError YOK
+    #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+        connect(socket, &QAbstractSocket::errorOccurred, this, &TCPClient::onError);
+    #else
+        connect(socket, static_cast<void(QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
+                this, &TCPClient::onError);
+    #endif
 }
 
 TCPClient::~TCPClient() {
@@ -73,43 +81,65 @@ void TCPClient::parseFrame(const QByteArray &frame) {
             break;
         }
         case ID_POSITION: {
-            float pos;
-            memcpy(&pos, data.constData(), sizeof(float));
-            emit positionUpdated(pos);
+            if (data.size() >= sizeof(float)) {
+                float pos;
+                memcpy(&pos, data.constData(), sizeof(float));
+                emit positionUpdated(pos);
+            }
             break;
         }
         case ID_VOLTAGE: {
-            quint16 raw = qFromLittleEndian<quint16>(data);
-            emit voltageUpdated(raw / 100.0f);
+            if (data.size() >= 2) {
+                quint16 raw = qFromLittleEndian<quint16>(reinterpret_cast<const uchar*>(data.constData()));
+                emit voltageUpdated(raw / 100.0f);
+            }
             break;
         }
-        case ID_TEMPERATURE_NTC1: { 
-            qint16 raw = qFromLittleEndian<qint16>(data);
-            emit temperatureUpdated(raw / 100.0f);
+        case ID_TEMPERATURE_NTC1: {
+            if (data.size() >= 2) {
+                qint16 raw = qFromLittleEndian<qint16>(reinterpret_cast<const uchar*>(data.constData()));
+                emit temperatureUpdated(raw / 100.0f);
+            }
             break;
         }
         case ID_BRAKE_STATUS: {
-            bool engaged = static_cast<bool>(data[0]);
-            emit brakeStatusChanged(engaged);
+            if (data.size() >= 1) {
+                bool engaged = static_cast<bool>(data[0]);
+                emit brakeStatusChanged(engaged);
+            }
             break;
         }
-        case ID_ERROR_FLAG: { 
-            quint32 flags = qFromLittleEndian<quint32>(data);
-            emit errorFlagsUpdated(flags);
+        case ID_ERROR_FLAG: {
+            if (data.size() >= 4) {
+                quint32 flags = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(data.constData()));
+                emit errorFlagsUpdated(flags);
+            }
             break;
         }
         case ID_ACCELERATION: { // 0x02
-            emit accelerationUpdated(raw / 100.0f);
+            if (data.size() >= 2) {
+                quint16 raw = qFromLittleEndian<quint16>(reinterpret_cast<const uchar*>(data.constData()));
+                emit accelerationUpdated(raw / 100.0f);
+            }
             break;
        }
         case ID_CURRENT: { // 0x05
-            emit currentUpdated(raw / 100.0f);
-            break;
+           if (data.size() >= 2) {
+               quint16 raw = qFromLittleEndian<quint16>(reinterpret_cast<const uchar*>(data.constData()));
+               emit currentUpdated(raw / 100.0f);
+           }
+           break;
         }
         case ID_POWER: { // 0x06
-            emit powerUpdated(pwr);
+            if (data.size() >= 2) {
+                quint16 pwr = qFromLittleEndian<quint16>(reinterpret_cast<const uchar*>(data.constData()));
+                emit powerUpdated(pwr / 100.0f); // pwr değişkenini tanımladık
+            }
             break;
         }
+        default:
+            qDebug() << "Unknown ID:" << QString::number(id, 16);
+            break;
     }
 }
 
@@ -155,6 +185,15 @@ quint8 TCPClient::calculateCRC(const QByteArray &data) {
     return crc;
 }
 
-void TCPClient::onConnected() { emit connectionChanged(true); buffer.clear(); }
-void TCPClient::onDisconnected() { emit connectionChanged(false); }
-void TCPClient::onError(QAbstractSocket::SocketError) { emit errorOccurred(socket->errorString()); }
+void TCPClient::onConnected() {
+    emit connectionChanged(true);
+    buffer.clear();
+}
+
+void TCPClient::onDisconnected() {
+    emit connectionChanged(false);
+}
+
+void TCPClient::onError(QAbstractSocket::SocketError) {
+    emit errorOccurred(socket->errorString());
+}
