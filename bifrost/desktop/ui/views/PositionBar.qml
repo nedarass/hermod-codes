@@ -1,71 +1,101 @@
 import QtQuick 2.15
+import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
 Item {
     id: root
-    // Varsayılan genişlik (kullanıldığı yerde değişebilir)
-    width: 600
-    height: 80
 
-    property real currentPosition: 0   // Anlık konum (metre)
-    property real totalLength: 200    // Toplam tünel uzunluğu (metre)
+    // Varsayılan boyutlar (Dışarıdan override edilebilir)
+    implicitWidth: 600
+    implicitHeight: 60
 
-    // --- Görselleştirme ---
+    // --- Özellikler (Properties) ---
+    // Bu değerleri C++ veya diğer QML dosyalarından güncelleyeceksin
+    property real currentPosition: 0.0  // Aracın anlık konumu (metre)
+    property real maxDistance: 200.0    // Pistin toplam uzunluğu (metre)
 
-    // 1. Tünel Hattı (Arka Plan Çizgisi)
+    // Renk Ayarları
+    property color trackColor: "#2d3436"       // Pist arka plan rengi
+    property color progressColor: "#00b894"    // İlerleme çubuğu rengi
+    property color indicatorColor: "#ffffff"   // Araç (Pod) rengi
+
     Rectangle {
-        id: trackLine
-        width: parent.width
-        height: 6
-        color: "#333333"
-        radius: 3
+        id: trackContainer
         anchors.centerIn: parent
-    }
+        width: parent.width
+        height: 12
+        color: root.trackColor
+        radius: height / 2
 
-    // Başlangıç ve Bitiş İşaretçileri (Dik çizgiler)
-    Rectangle { width: 2; height: 20; color: "gray"; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left }
-    Rectangle { width: 2; height: 20; color: "gray"; anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right }
+        // 1. Dolum Çubuğu (Gidilen mesafe kadar dolar)
+        Rectangle {
+            id: progressBar
+            height: parent.height
+            // Genişlik hesabı: (Anlık Konum / Toplam Yol) * Çubuk Genişliği
+            width: (root.currentPosition / root.maxDistance) * parent.width
+            color: root.progressColor
+            radius: parent.radius
 
-    // 2. Pod (Hareket Eden İmleç)
-    Rectangle {
-        id: podCursor
-        width: 50
-        height: 24
-        radius: 12
-        color: "#FF5722" // Turuncu
-        border.color: "white"
-        border.width: 2
-        anchors.verticalCenter: parent.verticalCenter
+            // Konum aniden değişirse yumuşak geçiş yapması için animasyon
+            Behavior on width {
+                NumberAnimation { duration: 100; easing.type: Easing.Linear }
+            }
+        }
 
-        // X koordinatını konuma göre hesapla
-        // (x = oran * toplam_genişlik)
-        x: (root.currentPosition / root.totalLength) * (root.width - width)
+        // 2. Pod Göstergesi (Hareket eden yuvarlak/ikon)
+        Rectangle {
+            id: podIndicator
+            width: 24
+            height: 24
+            radius: width / 2
+            color: root.indicatorColor
+            border.color: root.progressColor
+            border.width: 3
 
-        // Animasyonlu geçiş (Veri anlık sıçrasa bile yumuşak görünsün)
-        Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutQuad } }
+            anchors.verticalCenter: parent.verticalCenter
 
-        // Pod üzerindeki ok işareti (Süsleme)
-        Text {
-            anchors.centerIn: parent
-            text: ">"
-            color: "white"
-            font.bold: true
-            font.pixelSize: 14
+            // X konumu: Progress bar'ın bittiği yer, ama dışarı taşmasın diye ufak bir ayar
+            x: progressBar.width - (width / 2)
+
+            // Gölge efekti (Opsiyonel, şıklık katar)
+            layer.enabled: true
+
+            Behavior on x {
+                NumberAnimation { duration: 100; easing.type: Easing.Linear }
+            }
         }
     }
 
-    // 3. Alt Metin Bilgileri
+    // 3. Metin Bilgisi (Opsiyonel: Pod'un altında metreyi yazar)
     Text {
-        text: "Konum: " + Math.round(root.currentPosition) + " m"
-        color: "white"
-        font.pixelSize: 18
+        anchors.top: trackContainer.bottom
+        anchors.topMargin: 8
+        anchors.horizontalCenter: trackContainer.left
+        // Metni Pod ile birlikte hareket ettirmek için margin kullanıyoruz
+        anchors.horizontalCenterOffset: (root.currentPosition / root.maxDistance) * root.width
+
+        text: Math.floor(root.currentPosition) + "m"
+        color: "#dfe6e9"
+        font.pixelSize: 14
         font.bold: true
-        anchors.top: trackLine.bottom
-        anchors.topMargin: 25
-        anchors.horizontalCenter: parent.horizontalCenter
     }
 
-    // Mesafe Etiketleri
-    Text { text: "0m"; color: "gray"; anchors.bottom: trackLine.top; anchors.bottomMargin: 10; anchors.left: parent.left }
-    Text { text: root.totalLength + "m"; color: "gray"; anchors.bottom: trackLine.top; anchors.bottomMargin: 10; anchors.right: parent.right }
+    // Başlangıç ve Bitiş Etiketleri
+    Text {
+        anchors.bottom: trackContainer.top
+        anchors.bottomMargin: 5
+        anchors.left: trackContainer.left
+        text: "0m"
+        color: "#636e72"
+        font.pixelSize: 12
+    }
+
+    Text {
+        anchors.bottom: trackContainer.top
+        anchors.bottomMargin: 5
+        anchors.right: trackContainer.right
+        text: root.maxDistance + "m"
+        color: "#636e72"
+        font.pixelSize: 12
+    }
 }
