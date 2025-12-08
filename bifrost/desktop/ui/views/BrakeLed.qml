@@ -4,7 +4,7 @@ Item {
     id: root
     width: 120
     height: 40
-    
+
     property bool engaged: false // Dışarıdan kontrol edilecek durum
 
     Rectangle {
@@ -25,7 +25,7 @@ Item {
                 radius: 6
                 color: root.engaged ? "#ff0000" : "#333"
                 border.color: root.engaged ? "#ffcccc" : "transparent"
-                
+
                 // Yanıp sönme efekti (Fren çekiliyken)
                 SequentialAnimation on opacity {
                     running: root.engaged
