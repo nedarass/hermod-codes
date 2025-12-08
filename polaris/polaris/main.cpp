@@ -94,28 +94,26 @@ int main()
 
         // --- B. YÖN: STM32 -> BIFROST (Telemetri) ---
         // Seri porttan paketleri oku ve çöz
-        std::string telemetry = pulseSerial.readAndParse();
+        std::vector<uint8_t> telemetry = pulseSerial.readRawPacket();
        if (!telemetry.empty()) {
-            // Artık telemetry binary formatında değil, parse edilmiş string
-            // Örnek: "VEL:12.5", "TEMP:25.3", "BRAKE:1"
-            tcpServer.sendData(telemetry + "\n");
+            tcpServer.sendBinaryData(telemetry);
         }
 
 
         // --- C. YÖN: BIFROST -> STM32 (Komutlar) ---
         if (tcpServer.hasData()) {
-            std::string binaryData = tcpServer.receiveData();
+           std::vector<uint8_t> binaryData = tcpServer.receiveBinaryData();
             
             // Burada binaryData Bifrost'tan gelen binary frame
             // Format: [AA][55][ID][LEN][PAYLOAD...][CRC]
             
-            if (binaryData.length() >= 6) {
-                const uint8_t* data = reinterpret_cast<const uint8_t*>(binaryData.c_str());
+            if (binaryData.size() >= 6) {
+                const uint8_t* data = binaryData.data();
                  // Header kontrolü
                 if (data[0] == PKT_START && data[1] == PKT_END) {
                     uint8_t cmdId = data[2];
                     uint8_t payloadLen = data[3];
-                    if (binaryData.length() >= (4 + payloadLen + 1)) { // +1 for CRC
+                    if (binaryData.size() >= (4 + payloadLen + 1)) { // +1 for CRC
                         const uint8_t* payload = &data[4];
                         
                         // CRC kontrolü (basit XOR)
@@ -132,7 +130,7 @@ int main()
                                 case CMD_BRAKE_ACTUATE: {
                                     if (payloadLen >= 1) {
                                         uint8_t brakeForce = payload[0];
-                                        pulseSerial.sendCommand(CMD_BRAKE_ACTUATE, TYPE_U8, &brakeForce, 1);
+                                        pulseSerial.sendCommand(CMD_BRAKE_ACTUATE, {brakeForce});
                                         std::cout << "[POLARIS] Fren: %" << (int)brakeForce << " -> STM32" << std::endl;
                                     }
                                     break;
@@ -141,20 +139,25 @@ int main()
                                     if (payloadLen >= 4) {
                                         float speed;
                                         memcpy(&speed, payload, 4);
-                                        pulseSerial.sendCommand(CMD_SET_TARGET_SPEED, TYPE_F32, &speed, 4);
+                                        uint8_t* speedBytes = reinterpret_cast<uint8_t*>(&speed);
+                                        std::vector<uint8_t> speedVec(speedBytes, speedBytes + 4);
+                                        pulseSerial.sendCommand(CMD_SET_TARGET_SPEED,  speedVec);
                                         std::cout << "[POLARIS] Hiz: " << speed << " m/s -> STM32" << std::endl;
                                     }
                                     break;
                                 }
                                 case CMD_POWER_CUT_OFF: {
-                                    pulseSerial.sendCommand(CMD_POWER_CUT_OFF, 0x00, nullptr, 0);
+                                    pulseSerial.sendCommand(CMD_POWER_CUT_OFF,  {});
                                     std::cout << "[POLARIS] ACIL GUC KESME -> STM32" << std::endl;
                                     break;
                                 }
                                 case CMD_PING_REQUEST: {
                                     // Ping'e cevap ver
                                     uint16_t pingResponse = 1; // 1ms latency (simulation)
-                                    pulseSerial.sendCommand(ID_PING_RESPONSE, TYPE_I16, &pingResponse, 2);
+                                    std::vector<uint8_t> pingVec;
+                                    pingVec.push_back(pingResponse & 0xFF);
+                                    pingVec.push_back((pingResponse >> 8) & 0xFF);
+                                    pulseSerial.sendCommand(ID_PING_RESPONSE, pingVec);
                                     std::cout << "[POLARIS] Ping Request -> STM32" << std::endl;
                                     break;
                                 }
@@ -167,13 +170,16 @@ int main()
                             std::cerr << "[POLARIS] CRC hatasi!" << std::endl;
                         }
                     }
-                } else if (binaryData == "PING") {
-                    // String PING (keep-alive için)
+                }
+                        }else if (binaryData.size() == 4 &&
+                           binaryData[0] == 'P' &&
+                           binaryData[1] == 'I' &&
+                           binaryData[2] == 'N' &&
+                           binaryData[3] == 'G') {
                     tcpServer.sendData("PONG");
                 }
-            }
         }
-    }
+
     
 
         // --- D. Periyodik Ping ---
