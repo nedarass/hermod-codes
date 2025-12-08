@@ -14,7 +14,7 @@ Item {
         anchors.fill: parent
         radius: width / 2
         color: "#fdd835" // Endüstriyel sarı
-        
+
         // Çizgili uyarı deseni efekti (Opsiyonel basit çizim)
         Canvas {
             anchors.fill: parent
@@ -41,7 +41,7 @@ Item {
         radius: 70
         color: "#d32f2f"
         anchors.centerIn: parent
-        
+
         border.color: "#b71c1c"
         border.width: 4
 
@@ -83,7 +83,7 @@ Item {
 
         Behavior on scale { NumberAnimation { duration: 50; easing.type: Easing.OutBounce } }
     }
-    
+
     // Altına gölge efekti
     Rectangle {
         width: 140
