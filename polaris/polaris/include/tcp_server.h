@@ -15,12 +15,18 @@ public:
     
     bool start();
     bool acceptClient();
+
     std::string receiveData();
+    std::vector<uint8_t> receiveBinaryData();
+
+
+    bool sendBinaryData(const std::vector<uint8_t>& data);
     void sendData(const std::string& data);
+
     void closeServer();
     bool hasData();
     
-    // ✅ PING-PONG TCP SERVER'IN GÖREVİ
+
     void sendPing();
     bool shouldSendPing();  // Zaman kontrolü
     void updateLastPingTime(); // Zamanı güncelle
