@@ -22,7 +22,7 @@ public:
     std::vector<uint8_t> readRawPacket();
 
     // Bifrost'tan gelen komutu Pulse'a iletir
-    bool sendCommand(uint8_t cmdId, uint8_t type, const std::vector<uint8_t>& payload);
+    bool sendCommand(uint8_t cmdId, const std::vector<uint8_t>& payload);
 
 private:
     std::string portName;
