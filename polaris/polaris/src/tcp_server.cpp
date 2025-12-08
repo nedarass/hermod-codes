@@ -11,7 +11,10 @@
 #include "../include/tcp_server.h"
 #include <sys/select.h>
 
-TCPServer::TCPServer(int port) : port(port), server_fd(-1), client_fd(-1){}
+/*TCPServer::TCPServer(int port) : port(port), server_fd(-1), client_fd(-1){}*/
+
+TCPServer::TCPServer(int port) : port(port), server_fd(-1), client_fd(-1),
+    lastPingTime(std::chrono::steady_clock::now()) {}
 
 TCPServer::~TCPServer() {
     closeServer();
@@ -82,6 +85,31 @@ bool TCPServer::acceptClient() {
     return true;
 }
 
+
+// tcp_server.cpp'de:
+std::vector<uint8_t> TCPServer::receiveBinaryData() {
+    std::vector<uint8_t> buffer(1024);
+    ssize_t bytesReceived = recv(client_fd, buffer.data(), buffer.size(), 0);
+
+    if (bytesReceived == 0) {
+        std::cout << "Bağlantı istemci tarafından sonlandırıldı." << std::endl;
+        close(client_fd);
+        client_fd = -1;
+        return std::vector<uint8_t>();
+    }
+
+    if (bytesReceived == -1) {
+        std::cout << "Ağ problemi!" << std::endl;
+        close(client_fd);
+        client_fd = -1;
+        return std::vector<uint8_t>();
+    }
+
+    // Sadece okunan kadarını tut
+    buffer.resize(bytesReceived);
+    return buffer;
+}
+
 std::string TCPServer::receiveData() {
     char buffer[1024] = {0};
 
@@ -101,6 +129,13 @@ std::string TCPServer::receiveData() {
     }
 
     return std::string(buffer);
+}
+
+bool TCPServer::sendBinaryData(const std::vector<uint8_t>& data) {
+    if (!isConnected() || data.empty()) return false;
+
+    ssize_t sent = send(client_fd, data.data(), data.size(), 0);
+    return sent == static_cast<ssize_t>(data.size());
 }
 
 void TCPServer::sendData(const std::string& data) {
