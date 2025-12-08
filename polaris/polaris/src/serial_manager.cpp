@@ -146,7 +146,7 @@ std::vector<uint8_t> SerialManager::readRawPacket() {
 }
 
 // --- KOMUT GÖNDERME (Bifrost -> Pulse) ---
-bool SerialManager::sendCommand(uint8_t cmdId, uint8_t type, const std::vector<uint8_t>& payload) {
+bool SerialManager::sendCommand(uint8_t cmdId, const std::vector<uint8_t>& payload) {
     if (serialFd == -1) return false;
 
     std::vector<uint8_t> packet;
@@ -162,7 +162,9 @@ bool SerialManager::sendCommand(uint8_t cmdId, uint8_t type, const std::vector<u
     packet.insert(packet.end(), payload.begin(), payload.end());
 
     // CRC Ekle (Tüm paket üzerinden)
-    packet.push_back(calculateCRC(packet));
+    std::vector<uint8_t> dataForCRC = packet; // önce paketi kopyala
+    uint8_t crc = calculateCRC(dataForCRC);   // CRC'yi hesapla
+    packet.push_back(crc);
 
     // Gönder
     int written = write(serialFd, packet.data(), packet.size());
@@ -185,7 +187,7 @@ speed_t SerialManager::getBaudRateConst(int baud) {
         case 57600: return B57600;
         case 115200: return B115200;
         case 230400: return B230400;
-        case 460800: return B460800;
+        case 460800: return B230400;
         default: return B115200;
     }
 }
