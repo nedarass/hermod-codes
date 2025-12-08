@@ -45,6 +45,8 @@ SOURCES include/udp_listener.h
 SOURCES src/udp_listener.cpp
 SOURCES include/tcp_client.h
 SOURCES src/tcp_client.cpp
+SOURCES include/serial_communicator.h
+SOURCES src/serial_communicator.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
