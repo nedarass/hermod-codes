@@ -69,5 +69,3 @@ void UDPListener::processPendingDatagrams() {
         emit receivedMessage(message);
     }
 }
-
-
